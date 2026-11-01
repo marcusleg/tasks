@@ -4,7 +4,10 @@ declare global {
 	namespace App {
 		// interface Error {}
 		// interface Locals {}
-		// interface PageData {}
+		interface PageData {
+			/** Set by the root layout load once login exists (#4). */
+			user?: { name: string } | null;
+		}
 		// interface PageState {}
 		// interface Platform {}
 	}
