@@ -1,0 +1,7 @@
+# Package Managers
+package-lock.json
+
+# Miscellaneous
+/static/
+/drizzle/
+/.claude/
