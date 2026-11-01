@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
-const port = 4173;
+// E2E_PORT lets several checkouts run the suite side by side.
+const port = Number(process.env.E2E_PORT ?? 4173);
 
 // Every run gets a fresh database. Set once in the main process so workers,
 // which re-evaluate this file, inherit the same path.
