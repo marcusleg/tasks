@@ -40,6 +40,42 @@ npx playwright install chromium
 
 The schema lives in `src/lib/server/db/schema.ts`. After changing it, run `npm run db:generate` and commit the generated files in `drizzle/`. The server applies pending migrations when it starts (from the `init` hook in `src/hooks.server.ts`), so there is no separate migrate step. Migrations are read from `./drizzle` relative to the working directory, so start the server from the project root.
 
+## Running with Docker
+
+Images for `linux/amd64` and `linux/arm64` are published to the GitHub Container Registry: `ghcr.io/marcusleg/tasks:main` follows the `main` branch, `:sha-<short>` pins a commit, and releases are tagged `:<version>` (for example `:0.1.0`) and `:latest`.
+
+```sh
+docker run -d --name tasks \
+  -p 3000:3000 \
+  -v tasks-data:/data \
+  ghcr.io/marcusleg/tasks:latest
+```
+
+Or with Docker Compose:
+
+```yaml
+services:
+  tasks:
+    image: ghcr.io/marcusleg/tasks:latest
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    volumes:
+      - tasks-data:/data
+    environment:
+      DATABASE_PATH: /data/tasks.db
+      PORT: 3000
+      # Behind a TLS-terminating reverse proxy, see Environment variables below:
+      # PROTOCOL_HEADER: x-forwarded-proto
+      # HOST_HEADER: x-forwarded-host
+      # OIDC settings: see Configuration.
+
+volumes:
+  tasks-data:
+```
+
+Data lives in the `/data` volume. See [Running the container](#running-the-container) for building the image yourself and for bind-mount permissions.
+
 ## Running the container
 
 ```sh
