@@ -23,7 +23,7 @@ import {
 	type RecurrenceRule,
 	type SerializedRecurrence
 } from './recurrence';
-import { freeText, requiredText } from './validation';
+import { freeText, InvalidInputError, requiredText } from './validation';
 
 export const PRIORITIES = ['high', 'medium', 'low'] as const;
 export type Priority = (typeof PRIORITIES)[number];
@@ -32,12 +32,109 @@ export const MAX_TITLE_LENGTH = 1000;
 export const MAX_DESCRIPTION_LENGTH = 20_000;
 
 /**
- * What future Occurrences inherit when the current Occurrence was edited with "This Occurrence"
- * only (#17). Opaque JSON here; #17 defines its shape (e.g. the Title, Description, Priority and
- * the rule-based Planned/Due Dates the next Occurrence steps from). `null` means the current
- * Occurrence is itself the template.
+ * What the series makes of the current Occurrence, when the User changed it with "This Occurrence"
+ * only (CONTEXT.md → Occurrence, #17): the values the next Occurrence is generated from. Its dates
+ * are the ones the Recurrence steps from (where the current Occurrence would be had it not been
+ * moved). `null` on a Task means the current Occurrence is itself the template.
  */
-export type SeriesTemplate = Record<string, unknown>;
+export interface SeriesTemplate {
+	title: string;
+	description: string;
+	priority: Priority | null;
+	planned: PlannedDate;
+	due: DueDate;
+	/**
+	 * The Subtasks future Occurrences get, in Custom Order. Absent while the Subtasks of the current
+	 * Occurrence are still the template (the next Occurrence then copies them).
+	 */
+	subtasks?: SubtaskTemplate[];
+}
+
+/** One Subtask of a {@link SeriesTemplate}. */
+export interface SubtaskTemplate {
+	/** The current Occurrence's Subtask it was taken from, so "This and all future" edits find it. */
+	sourceId: string;
+	title: string;
+	description: string;
+	priority: Priority | null;
+	planned: PlannedDate;
+	due: DueDate;
+	position: string;
+}
+
+/** JSON/DB shape of a {@link SeriesTemplate}: dates in their serialized forms. */
+export type SerializedSeriesTemplate = Omit<SeriesTemplate, 'planned' | 'due' | 'subtasks'> & {
+	planned: SerializedPlannedDate;
+	due: SerializedDueDate;
+	subtasks?: SerializedSubtaskTemplate[];
+};
+export type SerializedSubtaskTemplate = Omit<SubtaskTemplate, 'planned' | 'due'> & {
+	planned: SerializedPlannedDate;
+	due: SerializedDueDate;
+};
+
+function serializeFields<T extends { planned: PlannedDate; due: DueDate }>(fields: T) {
+	return {
+		...fields,
+		planned: serializePlannedDate(fields.planned),
+		due: serializeDueDate(fields.due)
+	};
+}
+
+export function serializeSeriesTemplate(template: SeriesTemplate): SerializedSeriesTemplate {
+	const { subtasks, ...fields } = template;
+	return {
+		...serializeFields(fields),
+		...(subtasks && { subtasks: subtasks.map(serializeFields) })
+	};
+}
+
+function asRecord(value: unknown, what: string): Record<string, unknown> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+		throw new InvalidInputError(`${what} must be an object`);
+	}
+	return value as Record<string, unknown>;
+}
+
+/** The fields a Task and a Subtask template share, validated. */
+function parseTemplateFields(json: Record<string, unknown>) {
+	if (json.priority !== null && !isPriority(json.priority)) {
+		throw new InvalidInputError(`Unknown priority ${JSON.stringify(json.priority)}`);
+	}
+	return {
+		title: parseTitle(json.title),
+		description: parseDescription(json.description),
+		priority: json.priority as Priority | null,
+		planned: parsePlannedDate(json.planned),
+		due: parseDueDate(json.due)
+	};
+}
+
+/**
+ * Validates a serialized {@link SeriesTemplate}. It needs a Planned Date or a Due Date, like any
+ * recurring Task. Throws `InvalidInputError` or `InvalidDateError`.
+ */
+export function parseSeriesTemplate(value: unknown): SeriesTemplate {
+	const json = asRecord(value, 'Series template');
+	const fields = parseTemplateFields(json);
+	if (fields.planned.kind === 'unset' && fields.due.kind === 'unset') {
+		throw new InvalidInputError('A series template needs a Planned Date or a Due Date');
+	}
+	if (json.subtasks === undefined) return fields;
+	if (!Array.isArray(json.subtasks)) throw new InvalidInputError('Subtasks must be a list');
+	const subtasks = json.subtasks.map((item: unknown): SubtaskTemplate => {
+		const subtask = asRecord(item, 'Subtask template');
+		if (typeof subtask.sourceId !== 'string' || typeof subtask.position !== 'string') {
+			throw new InvalidInputError('A Subtask template needs a source id and a position');
+		}
+		return {
+			sourceId: subtask.sourceId,
+			...parseTemplateFields(subtask),
+			position: subtask.position
+		};
+	});
+	return { ...fields, subtasks };
+}
 
 export interface Task {
 	id: string;
@@ -73,11 +170,12 @@ export interface Task {
 /** JSON shape of a {@link Task}: dates and Recurrence in their serialized forms, timestamps as ISO strings. */
 export type SerializedTask = Omit<
 	Task,
-	'planned' | 'due' | 'recurrence' | 'completedAt' | 'createdAt' | 'updatedAt'
+	'planned' | 'due' | 'recurrence' | 'seriesTemplate' | 'completedAt' | 'createdAt' | 'updatedAt'
 > & {
 	planned: SerializedPlannedDate;
 	due: SerializedDueDate;
 	recurrence: SerializedRecurrence | null;
+	seriesTemplate: SerializedSeriesTemplate | null;
 	completedAt: string | null;
 	createdAt: string;
 	updatedAt: string;
@@ -98,6 +196,7 @@ export function serializeTask(task: Task): SerializedTask {
 		planned: serializePlannedDate(task.planned),
 		due: serializeDueDate(task.due),
 		recurrence: task.recurrence && serializeRecurrence(task.recurrence),
+		seriesTemplate: task.seriesTemplate && serializeSeriesTemplate(task.seriesTemplate),
 		completedAt: task.completedAt?.toISOString() ?? null,
 		createdAt: task.createdAt.toISOString(),
 		updatedAt: task.updatedAt.toISOString()
@@ -111,6 +210,7 @@ export function parseTask(json: SerializedTask): Task {
 		planned: parsePlannedDate(json.planned),
 		due: parseDueDate(json.due),
 		recurrence: json.recurrence && parseRecurrence(json.recurrence),
+		seriesTemplate: json.seriesTemplate && parseSeriesTemplate(json.seriesTemplate),
 		completedAt: json.completedAt === null ? null : new Date(json.completedAt),
 		createdAt: new Date(json.createdAt),
 		updatedAt: new Date(json.updatedAt)

@@ -102,7 +102,14 @@ describe('task row mapping', () => {
 			occurrencesSoFar: 3,
 			generatedFromTaskId: parent.id,
 			changedSinceGenerated: true,
-			seriesTemplate: { title: 'Template' }
+			seriesTemplate: {
+				title: 'Template',
+				description: '',
+				priority: null,
+				planned: dateOnly('2026-11-03'),
+				due: unsetDate,
+				subtasks: []
+			}
 		};
 
 		const row = db
@@ -123,6 +130,7 @@ describe('task row mapping', () => {
 		});
 		expect(task.completedAt).toEqual(fields.completedAt);
 		expect(task.recurrence).toEqual(recurrence);
+		expect(task.seriesTemplate).toEqual(fields.seriesTemplate);
 	});
 
 	it('round-trips through JSON (serializeTask / parseTask)', () => {

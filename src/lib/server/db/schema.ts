@@ -11,7 +11,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import type { SortMode } from '#lib/domain/lists.js';
 import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
-import type { Priority, SeriesTemplate } from '#lib/domain/tasks.js';
+import type { Priority, SerializedSeriesTemplate } from '#lib/domain/tasks.js';
 
 /**
  * A person who signs in through the configured OIDC provider. Identified by
@@ -166,8 +166,11 @@ export const tasks = sqliteTable(
 		changedSinceGenerated: integer('changed_since_generated', { mode: 'boolean' })
 			.notNull()
 			.default(false),
-		/** What future Occurrences inherit after a "This Occurrence" edit (#17); see `SeriesTemplate`. */
-		seriesTemplate: text('series_template', { mode: 'json' }).$type<SeriesTemplate>(),
+		/**
+		 * `serializeSeriesTemplate` output: what future Occurrences are generated from after a "This
+		 * Occurrence" edit (#17); null while the current Occurrence is itself the template.
+		 */
+		seriesTemplate: text('series_template', { mode: 'json' }).$type<SerializedSeriesTemplate>(),
 
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
