@@ -24,9 +24,7 @@
 </svelte:head>
 
 {#if data.list}
-	{#key data.list.id}
-		<ListPage list={data.list} tasks={data.tasks} />
-	{/key}
+	<ListPage focus={data.list} tasks={data.tasks} />
 {:else}
 	<section class="no-lists">
 		<h1>No lists yet</h1>
