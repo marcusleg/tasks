@@ -1,10 +1,17 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { startClock, viewerTimeZone } from '#lib/client/clock.svelte.js';
 	import { CollapsedSubtasks } from '#lib/client/collapsed-subtasks.svelte.js';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
-	import { MAX_LIST_NAME_LENGTH, type SerializedList } from '#lib/domain/lists.js';
+	import {
+		MAX_LIST_NAME_LENGTH,
+		SORT_MODES,
+		type SerializedList,
+		type SortMode
+	} from '#lib/domain/lists.js';
+	import { sortTasks } from '#lib/domain/sorting.js';
 	import AddTaskRow from './AddTaskRow.svelte';
 	import Column from './Column.svelte';
 	import ListMenu from './ListMenu.svelte';
@@ -28,16 +35,34 @@
 	const lists = getListStore();
 	const id = $props.id();
 
-	const open = $derived(tasks.openTasks(list.id));
+	// The Sort Mode is a view over Custom Order. Until the clock has started (SSR, hydration) the
+	// zone is UTC, so the markup is stable; the open Tasks re-sort once the browser zone is known.
+	const timeZone = $derived(viewerTimeZone());
+	const open = $derived(sortTasks(tasks.openTasks(list.id), list.sortMode, timeZone));
 	const completed = $derived(tasks.completedGroups(list.id));
 	const openSubtasks = (parentId: string) =>
-		tasks.subtasks(parentId).filter((subtask) => !subtask.completedAt);
+		sortTasks(
+			tasks.subtasks(parentId).filter((subtask) => !subtask.completedAt),
+			list.sortMode,
+			timeZone
+		);
+
+	const SORT_LABELS: Record<SortMode, string> = {
+		custom: 'Custom Order',
+		planned: 'Planned Date',
+		due: 'Due Date',
+		priority: 'Priority',
+		title: 'Title'
+	};
 
 	// Drag-and-drop (#11) only rearranges Custom Order, so only while the List shows it.
 	const reorderable = $derived(list.sortMode === 'custom');
 
 	const collapsed = new CollapsedSubtasks();
-	onMount(() => collapsed.load());
+	onMount(() => {
+		startClock();
+		collapsed.load();
+	});
 
 	let renaming = $state(false);
 	let draftName = $state('');
@@ -94,10 +119,21 @@
 			<!-- Keeps the column named while the heading is being edited. -->
 			<span id="{id}-name" class="visually-hidden">{list.name}</span>
 		{:else}
-			<h2 id="{id}-name" class="name">{list.name}</h2>
+			<div class="name">
+				<h2 id="{id}-name">{list.name}</h2>
+				{#if list.sortMode !== 'custom'}
+					<p class="sorted-by" data-sort-indicator>Sorted by {SORT_LABELS[list.sortMode]}</p>
+				{/if}
+			</div>
 		{/if}
 		<ListMenu
 			label="List options"
+			sort={{
+				label: 'Sort by',
+				value: list.sortMode,
+				options: SORT_MODES.map((mode) => ({ value: mode, label: SORT_LABELS[mode] })),
+				onSelect: (mode) => void lists.update(list.id, { sortMode: mode as SortMode })
+			}}
 			actions={[
 				{ label: 'Rename list', onSelect: startRename },
 				{
@@ -232,8 +268,17 @@
 	.name {
 		flex: 1;
 		min-width: 0;
+	}
+
+	.name h2 {
 		font-size: 1.125rem;
 		overflow-wrap: anywhere;
+	}
+
+	.sorted-by {
+		margin: 0;
+		color: var(--muted);
+		font-size: 0.75rem;
 	}
 
 	.rename {

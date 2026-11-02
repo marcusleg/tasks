@@ -5,7 +5,15 @@
 	 */
 	type Action = { label: string; onSelect: () => void; disabled?: boolean; danger?: boolean };
 
-	let { label, actions }: { label: string; actions: Action[] } = $props();
+	/** A group of exclusive choices (e.g. Sort by), the current one marked. */
+	type Choices = {
+		label: string;
+		value: string;
+		options: { value: string; label: string }[];
+		onSelect: (value: string) => void;
+	};
+
+	let { label, actions, sort }: { label: string; actions: Action[]; sort?: Choices } = $props();
 
 	let open = $state(false);
 	let root = $state<HTMLElement>();
@@ -54,6 +62,28 @@
 		</svg>
 	</button>
 	<ul id="{id}-menu" hidden={!open}>
+		{#if sort}
+			<li role="presentation">
+				<div role="group" aria-label={sort.label}>
+					<p class="group-label" aria-hidden="true">{sort.label}</p>
+					{#each sort.options as option (option.value)}
+						<button
+							type="button"
+							class="choice"
+							aria-pressed={option.value === sort.value}
+							onclick={() => {
+								close(false);
+								if (option.value !== sort.value) sort.onSelect(option.value);
+							}}
+						>
+							<span class="check" aria-hidden="true">{option.value === sort.value ? '✓' : ''}</span>
+							{option.label}
+						</button>
+					{/each}
+				</div>
+			</li>
+			<li role="presentation" class="separator"></li>
+		{/if}
 		{#each actions as action (action.label)}
 			<li>
 				<button
@@ -126,6 +156,31 @@
 	li button:disabled {
 		color: var(--muted);
 		cursor: default;
+	}
+
+	.group-label {
+		margin: 0;
+		padding: var(--space-1) var(--space-4);
+		color: var(--muted);
+		font-size: 0.75rem;
+		font-weight: 700;
+		text-transform: uppercase;
+	}
+
+	.choice {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.check {
+		width: 1em;
+		color: var(--accent-purple);
+	}
+
+	.separator {
+		margin: var(--space-1) 0;
+		border-top: 1px solid var(--border);
 	}
 
 	li button.danger:not(:disabled) {
