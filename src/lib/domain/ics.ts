@@ -3,6 +3,7 @@
  */
 import { Temporal } from 'temporal-polyfill';
 import { toZonedDateTime, type DueDate, type PlannedDate } from './dates';
+import { vtimezone } from './vtimezone';
 
 export const DEFAULT_PRODID = '-//marcusleg//Tasks//EN';
 
@@ -37,7 +38,20 @@ export type BuildCalendarInput = {
 	dueEventMinutes?: number;
 };
 
-type Options = { now: Temporal.Instant; dueEventMinutes: number };
+type Options = {
+	now: Temporal.Instant;
+	dueEventMinutes: number;
+	/** Zones used so far, with the first and last local date used in each. */
+	zones: Map<string, { first: Temporal.PlainDate; last: Temporal.PlainDate }>;
+};
+
+function useZone(options: Options, zone: string, date: Temporal.PlainDate) {
+	const used = options.zones.get(zone);
+	options.zones.set(zone, {
+		first: used && Temporal.PlainDate.compare(used.first, date) < 0 ? used.first : date,
+		last: used && Temporal.PlainDate.compare(used.last, date) > 0 ? used.last : date
+	});
+}
 
 function formatDate(date: Temporal.PlainDate): string {
 	return date.toString().replaceAll('-', '');
@@ -88,6 +102,7 @@ function timing(kind: EventKind, date: PlannedDate | DueDate, options: Options):
 				`DTEND;VALUE=DATE:${formatDate(date.date.add({ days: 1 }))}`
 			];
 		case 'timed': {
+			useZone(options, date.timeZone, date.dateTime.toPlainDate());
 			const zone = `TZID=${date.timeZone}`;
 			const start = `DTSTART;${zone}:${formatLocal(date.dateTime)}`;
 			if (kind === 'due' || !('durationMinutes' in date)) {
@@ -177,7 +192,16 @@ function fold(line: string): string {
 }
 
 export function buildCalendar(input: BuildCalendarInput): string {
-	const options: Options = { now: input.now, dueEventMinutes: input.dueEventMinutes ?? 0 };
+	const options: Options = {
+		now: input.now,
+		dueEventMinutes: input.dueEventMinutes ?? 0,
+		zones: new Map()
+	};
+	const events = input.tasks.flatMap((task) => taskEvents(task, options));
+	const nowDate = input.now.toZonedDateTimeISO('UTC').toPlainDate();
+	const timezones = [...options.zones].flatMap(([zone, { first, last }]) =>
+		vtimezone(zone, first, Temporal.PlainDate.compare(last, nowDate) > 0 ? last : nowDate)
+	);
 	const lines = [
 		'BEGIN:VCALENDAR',
 		'VERSION:2.0',
@@ -187,7 +211,8 @@ export function buildCalendar(input: BuildCalendarInput): string {
 		`X-WR-CALNAME:${text(input.calendarName)}`,
 		'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
 		'X-PUBLISHED-TTL:PT1H',
-		...input.tasks.flatMap((task) => taskEvents(task, options)),
+		...timezones,
+		...events,
 		'END:VCALENDAR'
 	];
 	return lines.map((line) => `${fold(line)}\r\n`).join('');

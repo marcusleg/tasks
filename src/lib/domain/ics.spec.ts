@@ -388,3 +388,156 @@ describe('long lines', () => {
 		expect(event.getFirstPropertyValue('description')).toContain('Ä'.repeat(200));
 	});
 });
+
+describe('time zones', () => {
+	function timezones(ics: string): string[] {
+		return parse(ics)
+			.getAllSubcomponents('vtimezone')
+			.map((zone) => zone.getFirstPropertyValue('tzid') as string);
+	}
+
+	it('are defined once for every zone used, and not for all-day events', () => {
+		const ics = calendarOf(
+			task({ id: 'a', planned: timedPlannedDate('2026-11-04T09:00', 'Europe/Berlin') }),
+			task({ id: 'b', due: timedDueDate('2026-11-05T09:00', 'America/New_York') }),
+			task({
+				id: 'c',
+				planned: timedPlannedDate('2027-06-01T09:00', 'Europe/Berlin'),
+				due: dateOnly('2027-06-02')
+			}),
+			task({ id: 'd', planned: dateOnly('2026-11-04') })
+		);
+
+		expect(timezones(ics).sort()).toEqual(['America/New_York', 'Europe/Berlin']);
+		const all = lines(ics);
+		expect(all.indexOf('BEGIN:VTIMEZONE')).toBeLessThan(all.indexOf('BEGIN:VEVENT'));
+	});
+
+	it('let a parser resolve timed events to the right instants in winter and summer', () => {
+		const ics = calendarOf(
+			task({ id: 'a', planned: timedPlannedDate('2026-11-04T09:00', 'Europe/Berlin', 30) }),
+			task({ id: 'b', due: timedDueDate('2027-07-01T09:00', 'Europe/Berlin') })
+		);
+
+		const [winter, summer] = events(ics).map((component) => new ICAL.Event(component));
+		expect(winter.startDate.toUnixTime()).toBe(
+			Temporal.Instant.from('2026-11-04T08:00Z').epochMilliseconds / 1000
+		);
+		expect(winter.endDate.toUnixTime()).toBe(
+			Temporal.Instant.from('2026-11-04T08:30Z').epochMilliseconds / 1000
+		);
+		expect(summer.startDate.toUnixTime()).toBe(
+			Temporal.Instant.from('2027-07-01T07:00Z').epochMilliseconds / 1000
+		);
+	});
+});
+
+describe('time zone definitions', () => {
+	/** The VTIMEZONE published for an event at `dateTime` in `zone`, as ical.js reads it. */
+	function publishedZone(zone: string, dateTime = '2026-11-04T09:00'): ICAL.Timezone {
+		const ics = calendarOf(task({ planned: timedPlannedDate(dateTime, zone) }));
+		const [component] = parse(ics).getAllSubcomponents('vtimezone');
+		return new ICAL.Timezone({ component, tzid: zone });
+	}
+
+	/**
+	 * Instants every 53 hours (so every hour of the day comes up) from `fromYear` up to `toYear`, plus instants just either side of each
+	 * transition (`transitions` is the tz database's list). ical.js converts UTC to local time
+	 * through wall-clock lookups, which misplace instants less than the size of the offset change
+	 * away from a transition (even with a canonical RRULE VTIMEZONE), so those are left out.
+	 */
+	function samples(
+		zone: string,
+		fromYear: number,
+		toYear: number,
+		transitions: Temporal.ZonedDateTime[]
+	): Temporal.Instant[] {
+		const start = Temporal.ZonedDateTime.from({ year: fromYear, month: 1, day: 1, timeZone: zone });
+		const end = Temporal.ZonedDateTime.from({ year: toYear, month: 1, day: 1, timeZone: zone });
+		const margin = (t: Temporal.ZonedDateTime) =>
+			Math.abs(t.offsetNanoseconds - t.subtract({ nanoseconds: 1 }).offsetNanoseconds) + 60e9;
+		const result: Temporal.ZonedDateTime[] = [];
+		for (let t = start; Temporal.ZonedDateTime.compare(t, end) < 0; t = t.add({ hours: 53 })) {
+			result.push(t);
+		}
+		for (const t of transitions) {
+			result.push(t.subtract({ nanoseconds: margin(t) }), t.add({ nanoseconds: margin(t) }));
+		}
+		const farFromTransitions = (sample: Temporal.ZonedDateTime) =>
+			transitions.every(
+				(t) => Math.abs(Number(sample.epochNanoseconds - t.epochNanoseconds)) >= margin(t)
+			);
+		return result.filter(farFromTransitions).map((t) => t.toInstant());
+	}
+
+	/** The tz database's transitions in `zone` between the given years. */
+	function tzTransitions(zone: string, fromYear: number, toYear: number) {
+		const start = Temporal.ZonedDateTime.from({ year: fromYear, month: 1, day: 1, timeZone: zone });
+		const end = Temporal.ZonedDateTime.from({ year: toYear, month: 1, day: 1, timeZone: zone });
+		const result: Temporal.ZonedDateTime[] = [];
+		// temporal-polyfill looks only ~3 years ahead, so probe from every year.
+		for (
+			let year = start;
+			Temporal.ZonedDateTime.compare(year, end) < 0;
+			year = year.add({ years: 1 })
+		) {
+			const yearEnd = year.add({ years: 1 });
+			for (
+				let t = year.getTimeZoneTransition('next');
+				t && Temporal.ZonedDateTime.compare(t, yearEnd) < 0;
+				t = t.getTimeZoneTransition('next')
+			) {
+				result.push(t);
+			}
+		}
+		return result;
+	}
+
+	function zoneSamples(zone: string, fromYear: number, toYear: number) {
+		return samples(zone, fromYear, toYear, tzTransitions(zone, fromYear, toYear));
+	}
+
+	/** Instants where ical.js reads a different UTC offset from the zone than the tz database has. */
+	function mismatches(timezone: ICAL.Timezone, zone: string, instants: Temporal.Instant[]) {
+		return instants.flatMap((instant) => {
+			const utc = ICAL.Time.fromJSDate(new Date(instant.epochMilliseconds), true);
+			const published = utc.convertToZone(timezone).utcOffset();
+			const actual = instant.toZonedDateTimeISO(zone).offsetNanoseconds / 1e9;
+			return published === actual ? [] : [`${instant.toString()}: ${published} ≠ ${actual}`];
+		});
+	}
+
+	it.each([
+		'Europe/Berlin',
+		'America/New_York',
+		'Australia/Sydney',
+		'America/Sao_Paulo',
+		'Africa/Casablanca',
+		'Asia/Jerusalem',
+		'Asia/Kolkata',
+		'UTC'
+	])('match the tz database in %s from the year before the event to ten years after', (zone) => {
+		const timezone = publishedZone(zone);
+
+		expect(mismatches(timezone, zone, zoneSamples(zone, 2025, 2037))).toEqual([]);
+	});
+
+	it.each(['Europe/Berlin', 'America/New_York', 'Australia/Sydney'])(
+		'keep following the DST rules of %s for decades beyond that',
+		(zone) => {
+			const timezone = publishedZone(zone);
+
+			expect(mismatches(timezone, zone, zoneSamples(zone, 2037, 2070))).toEqual([]);
+		}
+	);
+
+	it.each(['UTC', 'Asia/Kolkata', 'America/Sao_Paulo'])(
+		'have a single STANDARD component for %s, which has no transitions',
+		(zone) => {
+			const ics = calendarOf(task({ planned: timedPlannedDate('2026-11-04T09:00', zone) }));
+			const [component] = parse(ics).getAllSubcomponents('vtimezone');
+
+			expect(component.getAllSubcomponents().map((c) => c.name)).toEqual(['standard']);
+		}
+	);
+});
