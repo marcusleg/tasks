@@ -1,5 +1,5 @@
 import { Temporal } from 'temporal-polyfill';
-import rrule from 'rrule';
+import { RRuleTemporal } from 'rrule-temporal';
 import { describe, expect, it } from 'vitest';
 import {
 	parseDueDate,
@@ -19,8 +19,6 @@ import {
 	stepDriver,
 	toRRules
 } from './recurrence';
-
-const { rrulestr } = rrule;
 
 describe('Recurrence serialization', () => {
 	it.each([
@@ -706,7 +704,7 @@ describe('RRULE export of the end', () => {
 	});
 });
 
-describe('RRULE export matches the app (checked against the rrule reference implementation)', () => {
+describe('RRULE export matches the app (checked against an RFC 5545 reference implementation)', () => {
 	const SERIES_LENGTH = 25;
 
 	/** Wall-clock label of a serialized date: `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm`. */
@@ -750,8 +748,9 @@ describe('RRULE export matches the app (checked against the rrule reference impl
 
 	/**
 	 * Expands an RRULE from the given date with the reference implementation, in floating wall-clock
-	 * time (RFC 5545 expands a TZID'd DTSTART in local time, so this is equivalent). A UTC UNTIL is
-	 * converted to the series' wall-clock time first.
+	 * time (RFC 5545 expands a TZID'd DTSTART in local time, so this is equivalent). UTC stands in
+	 * for floating time, as it has no DST. A UTC UNTIL is converted to the series' wall-clock time
+	 * first.
 	 */
 	function referenceSeries(value: unknown, rruleValue: string): string[] {
 		const date = value as { kind: string; date?: string; dateTime?: string; timeZone?: string };
@@ -762,14 +761,14 @@ describe('RRULE export matches the app (checked against the rrule reference impl
 				`${until.slice(0, 4)}-${until.slice(4, 6)}-${until.slice(6, 11)}:${until.slice(11, 13)}:${until.slice(13)}Z`
 			);
 			const wallClock = instant.toZonedDateTimeISO(date.timeZone!).toPlainDateTime();
-			return `UNTIL=${compact(wallClock.toString())}`;
+			return `UNTIL=${compact(wallClock.toString())}Z`;
 		});
-		const expanded = rrulestr(`DTSTART:${compact(start)}\nRRULE:${floatingRule}`).all(
-			(_, index) => index < SERIES_LENGTH
-		);
+		const expanded = new RRuleTemporal({
+			rruleString: `DTSTART;TZID=UTC:${compact(start)}\nRRULE:${floatingRule}`
+		}).all((_, index) => index < SERIES_LENGTH);
 		return expanded.map((occurrence) => {
-			const iso = occurrence.toISOString();
-			return date.kind === 'date' ? iso.slice(0, 10) : iso.slice(0, 16);
+			const wallClock = occurrence.toPlainDateTime().toString();
+			return date.kind === 'date' ? wallClock.slice(0, 10) : wallClock.slice(0, 16);
 		});
 	}
 
