@@ -11,6 +11,8 @@ Built with SvelteKit (Svelte 5, TypeScript) on the Node adapter, with SQLite thr
 | Light | ![Desktop, light theme](docs/screenshots/desktop-light.png) | <img src="docs/screenshots/mobile-light.png" alt="Mobile, light theme" width="260"> |
 | Dark  | ![Desktop, dark theme](docs/screenshots/desktop-dark.png)   | <img src="docs/screenshots/mobile-dark.png" alt="Mobile, dark theme" width="260">   |
 
+Retake them with `npm run screenshots` after a visible change. It builds the app, signs in through the e2e mock provider, fills in sample data and overwrites `docs/screenshots/`.
+
 ## Local development
 
 Requires Node 26 and npm.
