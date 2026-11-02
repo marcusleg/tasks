@@ -30,6 +30,7 @@ import { moveChanges, moveError, stepMove, type Step, type TaskMove } from '#lib
 import { newId, timestamp } from '#lib/domain/validation.js';
 import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
 import { api, type TaskPatch } from './api.js';
+import { browserTimeZone } from './clock.svelte.js';
 import type { Toasts } from './toasts.svelte.js';
 
 type ById = Record<string, SerializedTask>;
@@ -171,13 +172,20 @@ export class TaskStore {
 		return this.#send('save the task', () => api.updateTask(id, patch));
 	}
 
-	/** Completes a Task and, with it, its open Subtasks (the cascade in `#lib/domain/subtasks`). */
+	/**
+	 * Completes a Task and, with it, its open Subtasks (the cascade in `#lib/domain/subtasks`).
+	 * The next Occurrence of a recurring Task is created by the server and shows up with its answer.
+	 */
 	complete(id: string): Promise<boolean> {
 		this.#applyCompletion(completionChanges(Object.values(this.#tasks), id, timestamp()));
-		return this.#send('complete the task', () => api.completeTask(id));
+		return this.#send('complete the task', () => api.completeTask(id, browserTimeZone()));
 	}
 
-	/** Reopens a Task with the Subtasks its completion closed, or a Subtask with its parent. */
+	/**
+	 * Reopens a Task with the Subtasks its completion closed, or a Subtask with its parent. What
+	 * happens to a reopened Occurrence and the current one (CONTEXT.md → Reopen) comes from the
+	 * server's answer.
+	 */
 	reopen(id: string): Promise<boolean> {
 		this.#applyCompletion(reopenChanges(Object.values(this.#tasks), id));
 		return this.#send('reopen the task', () => api.reopenTask(id));

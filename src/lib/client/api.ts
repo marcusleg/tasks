@@ -7,6 +7,7 @@ import type { SerializedCalendarLink } from '#lib/domain/calendar-links.js';
 import type { SerializedList, SortMode } from '#lib/domain/lists.js';
 import type { SerializedDueDate, SerializedPlannedDate } from '#lib/domain/dates.js';
 import type { TaskMove } from '#lib/domain/moves.js';
+import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
 import type { Priority, TaskChanges } from '#lib/domain/tasks.js';
 
 export class ApiError extends Error {
@@ -52,6 +53,8 @@ export interface TaskPatch {
 	planned?: SerializedPlannedDate;
 	due?: SerializedDueDate;
 	priority?: Priority | null;
+	/** A Recurrence (the server fills in the driving date's weekday or month day), or `null`. */
+	recurrence?: SerializedRecurrence | null;
 }
 
 const list = (id: string) => resolve('/api/lists/[id]', { id });
@@ -85,8 +88,9 @@ export const api = {
 		priority?: Priority | null;
 	}) => request<TaskChanges>('POST', resolve('/api/tasks'), input),
 	updateTask: (id: string, patch: TaskPatch) => request<TaskChanges>('PATCH', task(id), patch),
-	completeTask: (id: string) =>
-		request<TaskChanges>('POST', resolve('/api/tasks/[id]/complete', { id }), {}),
+	/** `timeZone` is the browser's, for completion-anchored Recurrences. */
+	completeTask: (id: string, timeZone: string) =>
+		request<TaskChanges>('POST', resolve('/api/tasks/[id]/complete', { id }), { timeZone }),
 	reopenTask: (id: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/reopen', { id }), {}),
 	deleteTask: (id: string) => request<TaskChanges>('DELETE', task(id)),
