@@ -2,7 +2,7 @@
  * iCalendar (RFC 5545) generation for Calendar Links. Pure: no DB or HTTP.
  */
 import { Temporal } from 'temporal-polyfill';
-import type { DueDate, PlannedDate } from './dates';
+import { toZonedDateTime, type DueDate, type PlannedDate } from './dates';
 
 export const DEFAULT_PRODID = '-//marcusleg//Tasks//EN';
 
@@ -27,7 +27,14 @@ export type BuildCalendarInput = {
 	/** The time the calendar is generated, published as each event's DTSTAMP. */
 	now: Temporal.Instant;
 	prodId?: string;
+	/**
+	 * Length of a timed Due Date's event in minutes. 0 (the default) publishes a zero-length event
+	 * as `DURATION:PT0S`; a positive value suits calendars that hide zero-length events.
+	 */
+	dueEventMinutes?: number;
 };
+
+type Options = { now: Temporal.Instant; dueEventMinutes: number };
 
 function formatDate(date: Temporal.PlainDate): string {
 	return date.toString().replaceAll('-', '');
@@ -39,19 +46,56 @@ function formatUtc(instant: Temporal.Instant): string {
 
 type EventKind = 'planned' | 'due';
 
+function formatLocal(dateTime: Temporal.PlainDateTime): string {
+	return dateTime.toString({ smallestUnit: 'second' }).replace(/[-:]/g, '');
+}
+
+/** DTSTART and DTEND (or DURATION) of an event, or `null` for an unset date. */
+function timing(kind: EventKind, date: PlannedDate | DueDate, options: Options): string[] | null {
+	switch (date.kind) {
+		case 'unset':
+			return null;
+		case 'date':
+			return [
+				`DTSTART;VALUE=DATE:${formatDate(date.date)}`,
+				`DTEND;VALUE=DATE:${formatDate(date.date.add({ days: 1 }))}`
+			];
+		case 'timed': {
+			const zone = `TZID=${date.timeZone}`;
+			const start = `DTSTART;${zone}:${formatLocal(date.dateTime)}`;
+			if (kind === 'due' || !('durationMinutes' in date)) {
+				return [
+					start,
+					`DURATION:PT${options.dueEventMinutes === 0 ? '0S' : `${options.dueEventMinutes}M`}`
+				];
+			}
+			const end = toZonedDateTime(date).add({ minutes: date.durationMinutes });
+			const endWallClock = end.toPlainDateTime();
+			// A repeated wall-clock time (DST overlap) reads as its earlier instance, which would cut
+			// the event short; DURATION is exact.
+			const readBack = endWallClock.toZonedDateTime(date.timeZone, {
+				disambiguation: 'compatible'
+			});
+			return readBack.equals(end)
+				? [start, `DTEND;${zone}:${formatLocal(endWallClock)}`]
+				: [start, `DURATION:PT${date.durationMinutes}M`];
+		}
+	}
+}
+
 function event(
 	task: CalendarTask,
 	kind: EventKind,
 	date: PlannedDate | DueDate,
-	now: Temporal.Instant
+	options: Options
 ): string[] {
-	if (date.kind !== 'date') return [];
+	const times = timing(kind, date, options);
+	if (!times) return [];
 	return [
 		'BEGIN:VEVENT',
 		`UID:${task.id}-${kind}@tasks`,
-		`DTSTAMP:${formatUtc(now)}`,
-		`DTSTART;VALUE=DATE:${formatDate(date.date)}`,
-		`DTEND;VALUE=DATE:${formatDate(date.date.add({ days: 1 }))}`,
+		`DTSTAMP:${formatUtc(options.now)}`,
+		...times,
 		`SUMMARY:${kind === 'due' ? `Due: ${task.title}` : task.title}`,
 		'END:VEVENT'
 	];
@@ -60,15 +104,21 @@ function event(
 /** Whether the Planned and Due Dates are the same date, or the same time in the same zone. */
 function sameDate(planned: PlannedDate, due: DueDate): boolean {
 	if (planned.kind === 'date' && due.kind === 'date') return planned.date.equals(due.date);
+	if (planned.kind === 'timed' && due.kind === 'timed') {
+		return planned.timeZone === due.timeZone && planned.dateTime.equals(due.dateTime);
+	}
 	return false;
 }
 
-function taskEvents(task: CalendarTask, now: Temporal.Instant): string[] {
-	const planned = sameDate(task.planned, task.due) ? [] : event(task, 'planned', task.planned, now);
-	return [...planned, ...event(task, 'due', task.due, now)];
+function taskEvents(task: CalendarTask, options: Options): string[] {
+	const planned = sameDate(task.planned, task.due)
+		? []
+		: event(task, 'planned', task.planned, options);
+	return [...planned, ...event(task, 'due', task.due, options)];
 }
 
 export function buildCalendar(input: BuildCalendarInput): string {
+	const options: Options = { now: input.now, dueEventMinutes: input.dueEventMinutes ?? 0 };
 	const lines = [
 		'BEGIN:VCALENDAR',
 		'VERSION:2.0',
@@ -78,7 +128,7 @@ export function buildCalendar(input: BuildCalendarInput): string {
 		`X-WR-CALNAME:${input.calendarName}`,
 		'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
 		'X-PUBLISHED-TTL:PT1H',
-		...input.tasks.flatMap((task) => taskEvents(task, input.now)),
+		...input.tasks.flatMap((task) => taskEvents(task, options)),
 		'END:VCALENDAR'
 	];
 	return lines.map((line) => `${line}\r\n`).join('');
