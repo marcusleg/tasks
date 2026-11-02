@@ -134,16 +134,17 @@
 		</p>
 
 		<details class="help">
-			<summary>Add a Calendar Link to Proton Calendar</summary>
+			<summary>Add a Calendar Link to your calendar app</summary>
 			<ol>
 				<li>Copy the URL of a Calendar Link below.</li>
 				<li>
-					In Proton Calendar, open Settings, then Calendars, and choose "Add calendar from URL".
+					In your calendar app, look for an option to subscribe to a calendar or add one from a URL.
 				</li>
 				<li>Paste the URL, give the calendar a name and save.</li>
 			</ol>
 			<p class="muted">
-				Proton refreshes calendars from a URL every few hours, so changes don't show up right away.
+				Calendar apps refresh subscribed calendars on their own schedule, often only every few
+				hours, so changes may not show up right away.
 			</p>
 		</details>
 
@@ -157,7 +158,7 @@
 						bind:value={name}
 						maxlength={MAX_CALENDAR_LINK_NAME_LENGTH}
 						autocomplete="off"
-						placeholder="e.g. Proton Calendar"
+						placeholder="e.g. Phone calendar"
 					/>
 				</label>
 				<fieldset>

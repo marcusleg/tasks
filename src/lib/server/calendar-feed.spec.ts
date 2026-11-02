@@ -429,7 +429,7 @@ describe('buildCalendarLinkFeed: recurring Tasks as event series (#20)', () => {
 
 describe('feedFilename', () => {
 	it('slugifies the name', () => {
-		expect(feedFilename('Proton Calendar!')).toBe('proton-calendar.ics');
+		expect(feedFilename('Phone Calendar!')).toBe('phone-calendar.ics');
 		expect(feedFilename('日本語')).toBe('calendar.ics');
 	});
 });
