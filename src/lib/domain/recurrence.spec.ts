@@ -1,4 +1,5 @@
 import { Temporal } from 'temporal-polyfill';
+import rrule from 'rrule';
 import { describe, expect, it } from 'vitest';
 import {
 	parseDueDate,
@@ -14,8 +15,12 @@ import {
 	InvalidRecurrenceError,
 	nextOccurrence,
 	parseRecurrence,
-	serializeRecurrence
+	serializeRecurrence,
+	stepDriver,
+	toRRules
 } from './recurrence';
+
+const { rrulestr } = rrule;
 
 describe('Recurrence serialization', () => {
 	it.each([
@@ -514,5 +519,374 @@ describe('next Occurrence', () => {
 
 			expect(zoned.toString()).toBe('2026-11-01T01:30:00-04:00[America/New_York]');
 		});
+	});
+});
+
+/** RRULE values for the Planned and Due series of the given (serialized) Occurrence. */
+function rrules(
+	current: SerializedOccurrence,
+	rule: Record<string, unknown>,
+	occurrencesSoFar = 1
+) {
+	return toRRules(
+		parseRecurrence({ interval: 1, end: { kind: 'never' }, anchor: 'schedule', ...rule }),
+		{ planned: parsePlannedDate(current.planned), due: parseDueDate(current.due), occurrencesSoFar }
+	);
+}
+
+describe('RRULE export', () => {
+	it.each([
+		['every day', { frequency: 'daily' }, 'FREQ=DAILY'],
+		['every 3 days', { frequency: 'daily', interval: 3 }, 'FREQ=DAILY;INTERVAL=3'],
+		['every week on its own weekday', { frequency: 'weekly' }, 'FREQ=WEEKLY;BYDAY=WE'],
+		[
+			'every week on several weekdays',
+			{ frequency: 'weekly', weekdays: [1, 3, 7] },
+			'FREQ=WEEKLY;BYDAY=MO,WE,SU'
+		],
+		[
+			'every 2 weeks on several weekdays, with ISO weeks',
+			{ frequency: 'weekly', interval: 2, weekdays: [1, 3] },
+			'FREQ=WEEKLY;INTERVAL=2;WKST=MO;BYDAY=MO,WE'
+		],
+		['every month on its own day', { frequency: 'monthly' }, 'FREQ=MONTHLY;BYMONTHDAY=4'],
+		[
+			'every month on the 28th',
+			{ frequency: 'monthly', monthDay: 28 },
+			'FREQ=MONTHLY;BYMONTHDAY=28'
+		],
+		[
+			'every month on the 29th, or the last day if shorter',
+			{ frequency: 'monthly', monthDay: 29 },
+			'FREQ=MONTHLY;BYMONTHDAY=28,29;BYSETPOS=-1'
+		],
+		[
+			'every month on the 30th, or the last day if shorter',
+			{ frequency: 'monthly', monthDay: 30 },
+			'FREQ=MONTHLY;BYMONTHDAY=28,29,30;BYSETPOS=-1'
+		],
+		[
+			'every month on the 31st, i.e. the last day',
+			{ frequency: 'monthly', monthDay: 31 },
+			'FREQ=MONTHLY;BYMONTHDAY=-1'
+		],
+		['every year on its own date', { frequency: 'yearly' }, 'FREQ=YEARLY;BYMONTH=11;BYMONTHDAY=4'],
+		[
+			'every 2 years',
+			{ frequency: 'yearly', interval: 2 },
+			'FREQ=YEARLY;INTERVAL=2;BYMONTH=11;BYMONTHDAY=4'
+		]
+	])('%s', (_, rule, expected) => {
+		expect(rrules({ planned: day('2026-11-04'), due: null }, rule)).toEqual({
+			planned: expected,
+			due: null
+		});
+	});
+});
+
+describe('RRULE export of month-end dates', () => {
+	it('exports Feb 29 every year as the last day of February', () => {
+		const rule = { frequency: 'yearly', monthDay: 29 };
+
+		expect(rrules({ planned: day('2028-02-29'), due: null }, rule).planned).toBe(
+			'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1'
+		);
+		expect(rrules({ planned: day('2029-02-28'), due: null }, rule).planned).toBe(
+			'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1'
+		);
+	});
+
+	it('exports the 31st from a clamped Occurrence as the last day of the month', () => {
+		const rule = { frequency: 'monthly', monthDay: 31 };
+
+		expect(rrules({ planned: day('2027-02-28'), due: null }, rule).planned).toBe(
+			'FREQ=MONTHLY;BYMONTHDAY=-1'
+		);
+	});
+});
+
+describe('RRULE export of the later date', () => {
+	it('gives both series the same rule when the dates fall on the same day', () => {
+		const current = {
+			planned: timed('2026-11-04T09:00', 'Europe/Berlin'),
+			due: timedDue('2026-11-04T17:00', 'Europe/Berlin')
+		};
+
+		expect(rrules(current, { frequency: 'monthly', monthDay: 31 })).toEqual({
+			planned: 'FREQ=MONTHLY;BYMONTHDAY=-1',
+			due: 'FREQ=MONTHLY;BYMONTHDAY=-1'
+		});
+	});
+
+	it('shifts the weekdays and week start of the later series by the offset', () => {
+		// Planned on Monday, due three days later on Thursday.
+		const current = { planned: day('2026-11-02'), due: day('2026-11-05') };
+
+		expect(rrules(current, { frequency: 'weekly', interval: 2, weekdays: [1, 3, 5] })).toEqual({
+			planned: 'FREQ=WEEKLY;INTERVAL=2;WKST=MO;BYDAY=MO,WE,FR',
+			due: 'FREQ=WEEKLY;INTERVAL=2;WKST=TH;BYDAY=MO,TH,SA'
+		});
+	});
+
+	it('shifts the weekdays of the Planned series when the Due Date drives', () => {
+		const current = { planned: day('2026-11-03'), due: day('2026-11-01') };
+
+		expect(rrules(current, { frequency: 'weekly' })).toEqual({
+			planned: 'FREQ=WEEKLY;BYDAY=TU',
+			due: 'FREQ=WEEKLY;BYDAY=SU'
+		});
+	});
+
+	it.each([
+		['the 10th, due 5 days later', 10, '2026-11-10', '2026-11-15', 'FREQ=MONTHLY;BYMONTHDAY=15'],
+		['the 31st, due the next day', 31, '2026-11-30', '2026-12-01', 'FREQ=MONTHLY;BYMONTHDAY=1']
+	])('expresses a monthly Due series exactly: %s', (_, monthDay, planned, due, expected) => {
+		expect(
+			rrules({ planned: day(planned), due: day(due) }, { frequency: 'monthly', monthDay }).due
+		).toBe(expected);
+	});
+
+	it('approximates a monthly Due series RRULE cannot express with its own day', () => {
+		// Planned on the 25th, due 11 days later: the 5th to the 8th, depending on the month.
+		const current = { planned: day('2026-11-25'), due: day('2026-12-06') };
+
+		expect(rrules(current, { frequency: 'monthly' }).due).toBe('FREQ=MONTHLY;BYMONTHDAY=6');
+	});
+});
+
+describe('RRULE export of the end', () => {
+	const count = (n: number) => ({ frequency: 'daily', end: { kind: 'count', count: n } });
+	const until = (date: string) => ({ frequency: 'daily', end: { kind: 'until', date } });
+
+	it('counts the remaining Occurrences, including the current one', () => {
+		const current = { planned: day('2026-11-04'), due: day('2026-11-05') };
+
+		expect(rrules(current, count(10), 4)).toEqual({
+			planned: 'FREQ=DAILY;COUNT=7',
+			due: 'FREQ=DAILY;COUNT=7'
+		});
+		expect(rrules(current, count(3), 3).planned).toBe('FREQ=DAILY;COUNT=1');
+	});
+
+	it('rejects more Occurrences so far than the count allows', () => {
+		expect(() => rrules({ planned: day('2026-11-04'), due: null }, count(3), 4)).toThrow(
+			InvalidRecurrenceError
+		);
+	});
+
+	it('ends date-only series on the until date, shifted for the later date', () => {
+		const current = { planned: day('2026-11-04'), due: day('2026-11-06') };
+
+		expect(rrules(current, until('2026-12-31'))).toEqual({
+			planned: 'FREQ=DAILY;UNTIL=20261231',
+			due: 'FREQ=DAILY;UNTIL=20270102'
+		});
+	});
+
+	it.each([
+		['Europe/Berlin in winter', 'Europe/Berlin', '2026-12-31', 'UNTIL=20261231T225959Z'],
+		['America/New_York in summer', 'America/New_York', '2027-07-04', 'UNTIL=20270705T035959Z'],
+		['Asia/Tokyo', 'Asia/Tokyo', '2027-01-15', 'UNTIL=20270115T145959Z']
+	])('ends timed series at the end of the until day in UTC: %s', (_, zone, date, expected) => {
+		const current = { planned: timed('2026-11-04T09:00', zone), due: null };
+
+		expect(rrules(current, until(date)).planned).toBe(`FREQ=DAILY;${expected}`);
+	});
+
+	it('formats UNTIL per series when one date is timed and the other is not', () => {
+		const current = {
+			planned: day('2026-11-04'),
+			due: timedDue('2026-11-05T12:00', 'America/New_York')
+		};
+
+		expect(rrules(current, until('2026-12-31'))).toEqual({
+			planned: 'FREQ=DAILY;UNTIL=20261231',
+			due: 'FREQ=DAILY;UNTIL=20270102T045959Z'
+		});
+	});
+});
+
+describe('RRULE export matches the app (checked against the rrule reference implementation)', () => {
+	const SERIES_LENGTH = 25;
+
+	/** Wall-clock label of a serialized date: `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm`. */
+	function label(value: unknown): string | null {
+		if (value === null) return null;
+		const date = value as { kind: string; date?: string; dateTime?: string };
+		return date.kind === 'date' ? date.date! : date.dateTime!;
+	}
+
+	/** The current Occurrence followed by up to SERIES_LENGTH - 1 next ones, as wall-clock labels. */
+	function appSeries(current: SerializedOccurrence, rule: Record<string, unknown>) {
+		const series = [current];
+		while (series.length < SERIES_LENGTH) {
+			const last = series[series.length - 1];
+			const completedAt = onTimeCompletion(last);
+			const next = stepOnce(last, rule, { occurrencesSoFar: series.length, completedAt });
+			if (!next) break;
+			series.push(next);
+		}
+		return {
+			planned: series.map((occurrence) => label(occurrence.planned)),
+			due: series.map((occurrence) => label(occurrence.due))
+		};
+	}
+
+	/** Completing on time: at the driving date (the earlier one; date-only values at noon UTC). */
+	function onTimeCompletion(occurrence: SerializedOccurrence): string {
+		const dates = [occurrence.planned, occurrence.due].filter((date) => date !== null) as {
+			kind: string;
+			date?: string;
+			dateTime?: string;
+			timeZone?: string;
+		}[];
+		const driver = dates.sort((a, b) =>
+			(a.date ?? a.dateTime!).slice(0, 10).localeCompare((b.date ?? b.dateTime!).slice(0, 10))
+		)[0];
+		return driver.kind === 'date'
+			? `${driver.date}T12:00:00+00:00[UTC]`
+			: Temporal.PlainDateTime.from(driver.dateTime!).toZonedDateTime(driver.timeZone!).toString();
+	}
+
+	/**
+	 * Expands an RRULE from the given date with the reference implementation, in floating wall-clock
+	 * time (RFC 5545 expands a TZID'd DTSTART in local time, so this is equivalent). A UTC UNTIL is
+	 * converted to the series' wall-clock time first.
+	 */
+	function referenceSeries(value: unknown, rruleValue: string): string[] {
+		const date = value as { kind: string; date?: string; dateTime?: string; timeZone?: string };
+		const start = date.kind === 'date' ? `${date.date}T00:00` : date.dateTime!;
+		const compact = (wallClock: string) => wallClock.replace(/[-:]/g, '').padEnd(15, '0');
+		const floatingRule = rruleValue.replace(/UNTIL=(\d{8}T\d{6})Z/, (_, until: string) => {
+			const instant = Temporal.Instant.from(
+				`${until.slice(0, 4)}-${until.slice(4, 6)}-${until.slice(6, 11)}:${until.slice(11, 13)}:${until.slice(13)}Z`
+			);
+			const wallClock = instant.toZonedDateTimeISO(date.timeZone!).toPlainDateTime();
+			return `UNTIL=${compact(wallClock.toString())}`;
+		});
+		const expanded = rrulestr(`DTSTART:${compact(start)}\nRRULE:${floatingRule}`).all(
+			(_, index) => index < SERIES_LENGTH
+		);
+		return expanded.map((occurrence) => {
+			const iso = occurrence.toISOString();
+			return date.kind === 'date' ? iso.slice(0, 10) : iso.slice(0, 16);
+		});
+	}
+
+	it.each([
+		[
+			'daily every 3 days, due 2 days later',
+			day('2026-11-04'),
+			day('2026-11-06'),
+			{ frequency: 'daily', interval: 3 }
+		],
+		[
+			'weekly, timed across DST',
+			timed('2026-10-21T09:00', 'Europe/Berlin'),
+			null,
+			{ frequency: 'weekly' }
+		],
+		[
+			'every 2 weeks Mon/Wed/Fri, due 3 days later',
+			day('2026-11-02'),
+			day('2026-11-05'),
+			{ frequency: 'weekly', interval: 2, weekdays: [1, 3, 5] }
+		],
+		[
+			'every 3 weeks Tue/Sun, timed in New York',
+			timed('2026-11-08T18:00', 'America/New_York'),
+			timedDue('2026-11-09T09:00', 'America/New_York'),
+			{ frequency: 'weekly', interval: 3, weekdays: [2, 7] }
+		],
+		[
+			'weekly Mon/Fri driven by the Due Date',
+			day('2026-11-04'),
+			day('2026-11-02'),
+			{ frequency: 'weekly', weekdays: [1, 5] }
+		],
+		['monthly on the 31st', day('2027-01-31'), null, { frequency: 'monthly', monthDay: 31 }],
+		['monthly on the 30th', null, day('2027-01-30'), { frequency: 'monthly', monthDay: 30 }],
+		['monthly on the 29th', day('2027-01-29'), null, { frequency: 'monthly', monthDay: 29 }],
+		[
+			'every 2 months on the 31st, timed',
+			timed('2026-12-31T23:00', 'Europe/Berlin'),
+			null,
+			{ frequency: 'monthly', interval: 2, monthDay: 31 }
+		],
+		[
+			'monthly on the 31st, due the next day',
+			day('2026-12-31'),
+			day('2027-01-01'),
+			{ frequency: 'monthly', monthDay: 31 }
+		],
+		[
+			'monthly on the 10th, due 5 days later',
+			day('2026-11-10'),
+			day('2026-11-15'),
+			{ frequency: 'monthly' }
+		],
+		['yearly on Feb 29', day('2028-02-29'), null, { frequency: 'yearly', monthDay: 29 }],
+		[
+			'every 2 years, timed',
+			timed('2026-11-04T09:00', 'Asia/Tokyo'),
+			null,
+			{ frequency: 'yearly', interval: 2 }
+		],
+		[
+			'daily at a time in the DST gap',
+			timed('2027-03-10T02:30', 'America/New_York'),
+			null,
+			{ frequency: 'daily' }
+		],
+		[
+			'after 5 times, from the 2nd',
+			day('2026-11-04'),
+			day('2026-11-05'),
+			{ frequency: 'weekly', end: { kind: 'count', count: 5 } }
+		],
+		[
+			'until a date, timed with a later Due Date',
+			timed('2026-11-02T09:00', 'America/New_York'),
+			timedDue('2026-11-04T17:00', 'Europe/Berlin'),
+			{ frequency: 'weekly', weekdays: [1, 4], end: { kind: 'until', date: '2026-12-31' } }
+		],
+		[
+			'until a date, date-only',
+			day('2026-11-30'),
+			null,
+			{ frequency: 'monthly', monthDay: 31, end: { kind: 'until', date: '2027-06-30' } }
+		],
+		[
+			'counted from completion, projected with on-time completion',
+			day('2027-01-31'),
+			day('2027-02-02'),
+			{ frequency: 'monthly', monthDay: 31, anchor: 'completion' }
+		]
+	])('%s', (_, planned, due, rule) => {
+		const current = { planned, due };
+		const app = appSeries(current, rule);
+		const exported = rrules(current, rule);
+
+		expect(app.planned.length).toBeGreaterThan(1);
+		for (const kind of ['planned', 'due'] as const) {
+			if (current[kind] === null) {
+				expect(exported[kind]).toBeNull();
+				continue;
+			}
+			expect(referenceSeries(current[kind], exported[kind]!), exported[kind]!).toEqual(app[kind]);
+		}
+	});
+});
+
+describe('step driver', () => {
+	it.each([
+		['the only date', day('2026-11-04'), null, 'planned'],
+		['the only date', null, day('2026-11-04'), 'due'],
+		['the earlier date', day('2026-11-04'), day('2026-11-02'), 'due'],
+		['the Planned Date on a tie', timed('2026-11-04T18:00', 'UTC'), day('2026-11-04'), 'planned']
+	])('is %s', (_, planned, due, expected) => {
+		expect(stepDriver({ planned: parsePlannedDate(planned), due: parseDueDate(due) })).toBe(
+			expected
+		);
 	});
 });

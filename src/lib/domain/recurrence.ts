@@ -1,3 +1,19 @@
+/**
+ * Recurrence (see CONTEXT.md): the rule model, stepping from one Occurrence to the next, and export
+ * as iCalendar RRULE values for Calendar Links. Pure: no DB or UI.
+ *
+ * Decisions:
+ * - Step driver: when both dates are set, the earlier one (by calendar date, each timed value read
+ *   in its own zone; Planned Date on a tie) is stepped by the rule. Weekly weekdays and the monthly
+ *   or yearly month day refer to that date. The other date then moves by the same number of
+ *   calendar days, keeping its own time of day and zone, so the offset between them is preserved.
+ * - Month end: each Occurrence is clamped to the month's length, but the intended day comes from the
+ *   rule's `monthDay`, so Jan 31 → Feb 28 → Mar 31. Without a `monthDay` the current date's day is
+ *   used, so callers should store it explicitly. Yearly rules use `monthDay` the same way for Feb 29.
+ * - DST: timed dates keep their wall-clock time in their zone; a time in a DST gap is stored as is
+ *   and resolves forward on conversion (`toZonedDateTime`), matching how calendars expand RRULEs.
+ * - RRULE: see {@link toRRules}.
+ */
 import { Temporal } from 'temporal-polyfill';
 import {
 	dateOnly,
@@ -135,7 +151,9 @@ export type OccurrenceDates = { planned: PlannedDate; due: DueDate };
 
 export type NextOccurrenceInput = OccurrenceDates & {
 	rule: RecurrenceRule;
+	/** How many Occurrences the series has had, including the current one (the first is 1). */
 	occurrencesSoFar: number;
+	/** When the current Occurrence was completed, in the completing browser's zone. Required for completion-anchored rules. */
 	completedAt?: Temporal.ZonedDateTime;
 };
 
@@ -185,18 +203,21 @@ function nextDriverDate(rule: RecurrenceRule, from: Temporal.PlainDate): Tempora
 }
 
 /**
- * The date whose rule steps drive the Occurrence: the one with the earlier calendar date (each
- * timed value read in its own zone), or the Planned Date on a tie.
+ * Which date the rule steps: the only one set, or the one with the earlier calendar date (each
+ * timed value read in its own zone), or the Planned Date on a tie. Weekly weekdays and the month
+ * day of a rule refer to this date. Throws when neither date is set.
  */
-function stepDriverDate({ planned, due }: OccurrenceDates): DateOnly | TimedDate {
+export function stepDriver({ planned, due }: OccurrenceDates): 'planned' | 'due' {
 	if (planned.kind === 'unset') {
-		if (due.kind === 'unset') {
-			throw new InvalidRecurrenceError('A recurring Task needs at least one date');
-		}
-		return due;
+		if (due.kind === 'unset') fail('A recurring Task needs at least one date');
+		return 'due';
 	}
-	if (due.kind === 'unset') return planned;
-	return Temporal.PlainDate.compare(localDate(due), localDate(planned)) < 0 ? due : planned;
+	if (due.kind === 'unset') return 'planned';
+	return Temporal.PlainDate.compare(localDate(due), localDate(planned)) < 0 ? 'due' : 'planned';
+}
+
+function stepDriverDate(dates: OccurrenceDates): DateOnly | TimedDate {
+	return dates[stepDriver(dates)] as DateOnly | TimedDate;
 }
 
 /**
@@ -217,6 +238,15 @@ function stepBase(
 	return inZone.toPlainDate();
 }
 
+/**
+ * The Planned and Due Dates of the Occurrence after the current one, or `null` when the
+ * Recurrence has ended (its count is used up, or the next driving date is after its until date).
+ *
+ * Schedule-anchored rules step from the current driving date. Completion-anchored rules step
+ * from the completion date (`completedAt` read in the driving date's zone, or in its own zone for
+ * a date-only value), keeping the original time of day; an early completion can therefore yield
+ * a date before the current one.
+ */
 export function nextOccurrence(input: NextOccurrenceInput): OccurrenceDates | null {
 	const { planned, due, rule } = input;
 	const occurrencesSoFar = positiveInteger(input.occurrencesSoFar, 'Occurrences so far');
@@ -229,4 +259,130 @@ export function nextOccurrence(input: NextOccurrenceInput): OccurrenceDates | nu
 	}
 	const days = current.until(next).days;
 	return { planned: shiftByDays(planned, days), due: shiftByDays(due, days) };
+}
+
+export type RRules = { planned: string | null; due: string | null };
+
+const WEEKDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+
+/**
+ * BYMONTHDAY (and BYSETPOS) parts that select exactly the days of the given dates, one per month,
+ * or `null` when no single pattern does. RFC 5545 skips months without the given day, so the
+ * app's clamping is expressed as "the last of the days 28…N" (`BYMONTHDAY=28,…,N;BYSETPOS=-1`),
+ * or `BYMONTHDAY=-1` when the series always falls on the last day.
+ */
+function monthDayParts(dates: Temporal.PlainDate[]): string[] | null {
+	if (dates.every((date) => date.day === dates[0].day)) return [`BYMONTHDAY=${dates[0].day}`];
+	if (dates.every((date) => date.day === date.daysInMonth)) return ['BYMONTHDAY=-1'];
+	for (const intended of [29, 30]) {
+		if (dates.every((date) => date.day === Math.min(intended, date.daysInMonth))) {
+			const days = Array.from({ length: intended - 27 }, (_, i) => 28 + i);
+			return [`BYMONTHDAY=${days.join(',')}`, 'BYSETPOS=-1'];
+		}
+	}
+	return null;
+}
+
+/** Enough future steps to cover every month length, including leap years twice. */
+const PROBE_MONTHS = 96;
+
+/**
+ * BY-parts for the series of one date, `offsetDays` after the driving date. The pattern is read
+ * off the dates the app itself would produce, so the calendar matches the app wherever RRULE can
+ * express it at all.
+ */
+function byParts(rule: RecurrenceRule, driver: Temporal.PlainDate, offsetDays: number): string[] {
+	const own = driver.add({ days: offsetDays });
+	switch (rule.frequency) {
+		case 'daily':
+			return [];
+		case 'weekly': {
+			const weekdays = rule.weekdays ?? [driver.dayOfWeek as Weekday];
+			const byDay = weekdays
+				.map((weekday) => (weekday - 1 + offsetDays) % 7)
+				.sort((a, b) => a - b)
+				.map((index) => WEEKDAY_CODES[index]);
+			const weekStart =
+				rule.interval > 1 && weekdays.length > 1 ? [`WKST=${WEEKDAY_CODES[offsetDays % 7]}`] : [];
+			return [...weekStart, `BYDAY=${byDay.join(',')}`];
+		}
+		case 'monthly': {
+			const monthDay = rule.monthDay ?? driver.day;
+			const dates = Array.from({ length: PROBE_MONTHS }, (_, i) =>
+				monthsLater(driver, i, monthDay).add({ days: offsetDays })
+			);
+			return monthDayParts(dates) ?? [`BYMONTHDAY=${own.day}`];
+		}
+		case 'yearly': {
+			const monthDay = rule.monthDay ?? driver.day;
+			const dates = Array.from({ length: PROBE_MONTHS / 12 }, (_, i) =>
+				monthsLater(driver, 12 * i, monthDay).add({ days: offsetDays })
+			);
+			const dayParts = dates.every((date) => date.month === dates[0].month)
+				? monthDayParts(dates)
+				: null;
+			return dayParts
+				? [`BYMONTH=${dates[0].month}`, ...dayParts]
+				: [`BYMONTH=${own.month}`, `BYMONTHDAY=${own.day}`];
+		}
+	}
+}
+
+/**
+ * UNTIL for a series ending on `lastDate`: a DATE for date-only series, or for timed series the
+ * last second of that day in the series' zone, in UTC (RFC 5545 requires UTC when DTSTART has a
+ * TZID).
+ */
+function formatUntil(lastDate: Temporal.PlainDate, value: DateOnly | TimedDate): string {
+	if (value.kind === 'date') return lastDate.toString().replaceAll('-', '');
+	const endOfDay = lastDate
+		.add({ days: 1 })
+		.toZonedDateTime(value.timeZone)
+		.subtract({ seconds: 1 });
+	return endOfDay.toInstant().toString().replace(/[-:]/g, '');
+}
+
+/**
+ * RFC 5545 RRULE values (without the `RRULE:` prefix) for the Planned and Due series of the
+ * current Occurrence; `null` for an unset date. Each series' DTSTART is that date of the current
+ * Occurrence (`TZID` for timed values, `VALUE=DATE` for date-only ones).
+ *
+ * - Completion-anchored rules give the projected series, assuming each Occurrence is completed
+ *   on time, which is the scheduled series from the current Occurrence.
+ * - COUNT is the remaining number of Occurrences including the current one. UNTIL is shifted by
+ *   the series' offset from the driving date; it is a DATE for date-only series and the last
+ *   second of that day, in UTC, for timed ones.
+ * - Month end: RFC 5545 skips months without the given day, while the app clamps. Clamped series
+ *   are exported as `BYMONTHDAY=-1` (31st) or `BYMONTHDAY=28,…,N;BYSETPOS=-1` (29th/30th), and
+ *   Feb 29 yearly as `BYMONTH=2;BYMONTHDAY=-1`, so calendars show the same dates as the app.
+ *   Proton Calendar is known to reject multi-value BYMONTHDAY with BYSETPOS; `-1` is accepted.
+ * - The later date's series is the driving series shifted by whole days: weekly BYDAY and WKST are
+ *   shifted exactly. A monthly or yearly series that no single BYMONTHDAY pattern can express
+ *   (e.g. due 11 days after the 25th: the 5th to the 8th) falls back to its own current day and
+ *   may then differ from the app by a few days around short months.
+ * - Assumes the current Occurrence lies on the rule; a detached one (moved by "This Occurrence")
+ *   should be published on its own, with the series starting at the next Occurrence.
+ */
+export function toRRules(
+	rule: RecurrenceRule,
+	current: OccurrenceDates & { occurrencesSoFar: number }
+): RRules {
+	const occurrencesSoFar = positiveInteger(current.occurrencesSoFar, 'Occurrences so far');
+	if (rule.end.kind === 'count' && occurrencesSoFar > rule.end.count) {
+		fail(`Occurrences so far exceed the count of ${rule.end.count}`);
+	}
+	const driver = localDate(stepDriverDate(current));
+	const series = (value: TaskDate) => {
+		if (value.kind === 'unset') return null;
+		const offsetDays = driver.until(localDate(value)).days;
+		const parts = [`FREQ=${rule.frequency.toUpperCase()}`];
+		if (rule.interval > 1) parts.push(`INTERVAL=${rule.interval}`);
+		parts.push(...byParts(rule, driver, offsetDays));
+		if (rule.end.kind === 'count') parts.push(`COUNT=${rule.end.count - occurrencesSoFar + 1}`);
+		if (rule.end.kind === 'until') {
+			parts.push(`UNTIL=${formatUntil(rule.end.date.add({ days: offsetDays }), value)}`);
+		}
+		return parts.join(';');
+	};
+	return { planned: series(current.planned), due: series(current.due) };
 }
