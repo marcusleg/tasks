@@ -1,4 +1,5 @@
 import ICAL from 'ical.js';
+import rrule from 'rrule';
 import { Temporal } from 'temporal-polyfill';
 import { describe, expect, it } from 'vitest';
 import {
@@ -18,6 +19,7 @@ import {
 	type RecurrenceRule
 } from './recurrence';
 
+const { rrulestr } = rrule;
 const now = Temporal.Instant.from('2026-11-02T08:30:15.123Z');
 
 /** The content lines of an iCalendar document, unfolded (RFC 5545 §3.1). */
@@ -798,6 +800,50 @@ describe('an Occurrence moved off its Recurrence ("This Occurrence")', () => {
 			'2026-11-08',
 			'2026-11-11',
 			'2026-11-14'
+		]);
+	});
+});
+
+describe('a monthly series on the 29th or 30th', () => {
+	const monthly30 = task({
+		planned: dateOnly('2027-01-30'),
+		recurrence: {
+			seriesId: 's',
+			rule: rule({ frequency: 'monthly', monthDay: 30 }),
+			occurrencesSoFar: 1
+		}
+	});
+
+	it('uses a single BYMONTHDAY by default, which Proton accepts, skipping February', () => {
+		const ics = calendarOf(monthly30);
+
+		expect(eventLines(ics)).toContain('RRULE:FREQ=MONTHLY;BYMONTHDAY=30');
+		expect(expand(events(ics)[0], 3)).toEqual(['2027-01-30', '2027-03-30', '2027-04-30']);
+	});
+
+	it('can use the exact rule, which clamps to the end of February like the app', () => {
+		const ics = buildCalendar({
+			calendarName: 'Home',
+			tasks: [monthly30],
+			now,
+			exactMonthEnd: true
+		});
+
+		const event = eventLines(ics);
+		expect(event).toContain('RRULE:FREQ=MONTHLY;BYMONTHDAY=28,29,30;BYSETPOS=-1');
+		// ical.js (as used by Thunderbird) wrongly expands this to the 28th of every month after
+		// the first, so check it with the rrule reference implementation instead (which doesn't
+		// read VALUE=DATE).
+		const expanded = rrulestr(
+			event
+				.filter((line) => /^(DTSTART|RRULE)/.test(line))
+				.map((line) => line.replace(';VALUE=DATE', ''))
+				.join('\n')
+		).all((_, i) => i < 3);
+		expect(expanded.map((date) => date.toISOString().slice(0, 10))).toEqual([
+			'2027-01-30',
+			'2027-02-28',
+			'2027-03-30'
 		]);
 	});
 });

@@ -60,11 +60,19 @@ export type BuildCalendarInput = {
 	 * as `DURATION:PT0S`; a positive value suits calendars that hide zero-length events.
 	 */
 	dueEventMinutes?: number;
+	/**
+	 * Publish monthly series on the 29th or 30th with the exact RFC 5545 rule
+	 * (`BYMONTHDAY=28,29[,30];BYSETPOS=-1`), which clamps to short months like the app. Off by
+	 * default: Proton Calendar rejects multi-value BYMONTHDAY and ical.js (Thunderbird) misexpands
+	 * it, so a single `BYMONTHDAY=29`/`30` is published instead, skipping months without that day.
+	 */
+	exactMonthEnd?: boolean;
 };
 
 type Options = {
 	now: Temporal.Instant;
 	dueEventMinutes: number;
+	exactMonthEnd: boolean;
 	/** Zones used so far, with the first and last local date used in each. */
 	zones: Map<string, { first: Temporal.PlainDate; last: Temporal.PlainDate }>;
 };
@@ -149,6 +157,14 @@ function timing(kind: EventKind, date: PlannedDate | DueDate, options: Options):
 	}
 }
 
+/**
+ * Replaces the clamped month-day pattern `BYMONTHDAY=28,…,N;BYSETPOS=-1` with plain
+ * `BYMONTHDAY=N` (see `exactMonthEnd`). The intended day N is the last one listed.
+ */
+function withoutSetPos(rrule: string): string {
+	return rrule.replace(/BYMONTHDAY=28(?:,(\d+))+;BYSETPOS=-1/, 'BYMONTHDAY=$1');
+}
+
 /** The events of one Occurrence, or of a series starting at it when `rrules` is given. */
 type Publication = { uidBase: string; dates: OccurrenceDates; rrules?: RRules };
 
@@ -160,7 +176,8 @@ function event(
 ): string[] {
 	const times = timing(kind, publication.dates[kind], options);
 	if (!times) return [];
-	const rrule = publication.rrules?.[kind];
+	const exactRrule = publication.rrules?.[kind];
+	const rrule = exactRrule && !options.exactMonthEnd ? withoutSetPos(exactRrule) : exactRrule;
 	return [
 		'BEGIN:VEVENT',
 		`UID:${publication.uidBase}-${kind}@tasks`,
@@ -260,6 +277,7 @@ export function buildCalendar(input: BuildCalendarInput): string {
 	const options: Options = {
 		now: input.now,
 		dueEventMinutes: input.dueEventMinutes ?? 0,
+		exactMonthEnd: input.exactMonthEnd ?? false,
 		zones: new Map()
 	};
 	const events = input.tasks.flatMap((task) => taskEvents(task, options));
