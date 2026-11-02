@@ -4,6 +4,13 @@ A minimalist, self-hosted task manager in the spirit of Google Tasks. Each User 
 
 Built with SvelteKit (Svelte 5, TypeScript) on the Node adapter, with SQLite through Drizzle ORM.
 
+## Screenshots
+
+|       | Desktop                                                     | Mobile                                                                              |
+| ----- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Light | ![Desktop, light theme](docs/screenshots/desktop-light.png) | <img src="docs/screenshots/mobile-light.png" alt="Mobile, light theme" width="260"> |
+| Dark  | ![Desktop, dark theme](docs/screenshots/desktop-dark.png)   | <img src="docs/screenshots/mobile-dark.png" alt="Mobile, dark theme" width="260">   |
+
 ## Local development
 
 Requires Node 24 and npm.
