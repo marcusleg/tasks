@@ -44,6 +44,7 @@
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.23.1",
 		"globals": "^17.14.0",
+		"ical.js": "^2.2.1",
 		"oauth2-mock-server": "^9.3.0",
 		"prettier": "^3.9.10",
 		"prettier-plugin-svelte": "^4.1.1",
