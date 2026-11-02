@@ -5,6 +5,6 @@
 	let { data }: PageProps = $props();
 </script>
 
-{#key data.list.id}
-	<ListPage list={data.list} tasks={data.tasks} />
-{/key}
+{#if data.list}
+	<ListPage focus={data.list} tasks={data.tasks} scrollToFocus />
+{/if}

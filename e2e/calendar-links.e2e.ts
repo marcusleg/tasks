@@ -66,8 +66,8 @@ test('create, copy, fetch, edit and delete a Calendar Link', async ({ page, cont
 	await card.getByRole('button', { name: 'Edit' }).click();
 	await page.getByRole('textbox', { name: 'Name' }).fill('Work');
 	await page.getByRole('checkbox', { name: /All Lists/ }).uncheck();
-	await expect(page.getByRole('checkbox', { name: 'My Tasks' })).toBeVisible();
-	await page.getByRole('checkbox', { name: 'My Tasks' }).check();
+	await expect(page.getByRole('checkbox', { name: 'My Tasks', exact: true })).toBeVisible();
+	await page.getByRole('checkbox', { name: 'My Tasks', exact: true }).check();
 	await saved(page, () => page.getByRole('button', { name: 'Save' }).click());
 	const renamed = page.getByRole('article', { name: 'Work' });
 	await expect(renamed.getByText('My Tasks')).toBeVisible();

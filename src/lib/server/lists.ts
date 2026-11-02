@@ -5,7 +5,14 @@
  */
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { generateKeyBetween } from 'fractional-indexing';
-import { DEFAULT_LIST_NAME, parseListName, type List, type SortMode } from '#lib/domain/lists.js';
+import {
+	DEFAULT_LIST_NAME,
+	parseListName,
+	positionForMove,
+	type List,
+	type ListMove,
+	type SortMode
+} from '#lib/domain/lists.js';
 import { isId, InvalidInputError } from '#lib/domain/validation.js';
 import { toList } from './db/mapping.js';
 import { lists, userPreferences } from './db/schema.js';
@@ -69,6 +76,8 @@ export interface ListPatch {
 	name?: string;
 	sortMode?: SortMode;
 	visible?: boolean;
+	/** Moves the List next to another List (changes its position). */
+	move?: ListMove;
 }
 
 /** Changes a List's fields; `undefined` if the List isn't the User's. Throws `InvalidInputError`. */
@@ -77,6 +86,10 @@ export function updateList(scope: UserScope, id: string, patch: ListPatch): List
 	if (patch.name !== undefined) values.name = parseListName(patch.name);
 	if (patch.sortMode !== undefined) values.sortMode = patch.sortMode;
 	if (patch.visible !== undefined) values.visible = patch.visible;
+	if (patch.move !== undefined) {
+		if (!getList(scope, id)) return undefined;
+		values.position = positionForMove(getLists(scope), id, patch.move);
+	}
 	if (Object.keys(values).length === 0) return getList(scope, id);
 
 	const row = scope.db

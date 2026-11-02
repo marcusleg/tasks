@@ -28,7 +28,7 @@
 			<SidebarNav />
 		{/snippet}
 		{#snippet userActions()}
-			<form method="POST" action="/auth/logout">
+			<form method="POST" action="/auth/logout" class="sign-out-form">
 				<button type="submit" class="sign-out">Sign out</button>
 			</form>
 		{/snippet}
@@ -42,13 +42,14 @@
 
 <style>
 	.sign-out {
+		width: 100%;
 		font: inherit;
 		font-size: 0.875rem;
-		color: var(--muted);
+		color: var(--fg);
 		background: none;
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
-		padding: var(--space-1) var(--space-2);
+		padding: var(--space-2);
 		cursor: pointer;
 	}
 

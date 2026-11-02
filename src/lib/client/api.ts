@@ -49,8 +49,16 @@ const task = (id: string) => resolve('/api/tasks/[id]', { id });
 export const api = {
 	createList: (input: { id: string; name: string }) =>
 		request<{ list: SerializedList }>('POST', resolve('/api/lists'), input),
-	updateList: (id: string, patch: { name?: string; sortMode?: SortMode; visible?: boolean }) =>
-		request<{ list: SerializedList }>('PATCH', list(id), patch),
+	updateList: (
+		id: string,
+		patch: {
+			name?: string;
+			sortMode?: SortMode;
+			visible?: boolean;
+			before?: string;
+			after?: string;
+		}
+	) => request<{ list: SerializedList }>('PATCH', list(id), patch),
 	deleteList: (id: string) => request<void>('DELETE', list(id)),
 	deleteCompletedTasks: (listId: string) =>
 		request<TaskChanges>('DELETE', resolve('/api/lists/[id]/completed-tasks', { id: listId })),

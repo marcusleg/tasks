@@ -207,3 +207,34 @@ describe('getStartList', () => {
 		expect(getStartList(alice)).toBeUndefined();
 	});
 });
+
+describe('updateList move', () => {
+	it('reorders Lists and leaves the others alone', () => {
+		const { alice } = setUp();
+		const a = createList(alice, { name: 'A' });
+		const b = createList(alice, { name: 'B' });
+		const c = createList(alice, { name: 'C' });
+
+		const moved = updateList(alice, c.id, { move: { before: a.id } });
+
+		expect(moved?.position).not.toBe(c.position);
+		expect(getLists(alice).map((l) => l.name)).toEqual(['C', 'A', 'B']);
+		expect(getList(alice, b.id)?.position).toBe(b.position);
+
+		updateList(alice, c.id, { move: { after: b.id } });
+		expect(getLists(alice).map((l) => l.name)).toEqual(['A', 'B', 'C']);
+	});
+
+	it("rejects another User's List as a target and can't move their List", () => {
+		const { alice, bob } = setUp();
+		const mine = createList(alice, { name: 'Mine' });
+		const other = createList(alice, { name: 'Other' });
+		const theirs = createList(bob, { name: 'Theirs' });
+
+		expect(() => updateList(alice, mine.id, { move: { after: theirs.id } })).toThrow(
+			InvalidInputError
+		);
+		expect(updateList(bob, mine.id, { move: { after: theirs.id } })).toBeUndefined();
+		expect(getLists(alice).map((l) => l.id)).toEqual([mine.id, other.id]);
+	});
+});

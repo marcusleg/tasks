@@ -2,12 +2,12 @@
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import ThemeSwitch from './ThemeSwitch.svelte';
+	import UserMenu from './UserMenu.svelte';
 
 	type Props = {
 		/** The signed-in user. The user area is not rendered when absent. */
 		user?: { name: string } | null;
-		/** Extra controls next to the user's name, e.g. a logout button. */
+		/** Extra controls in the user menu below the theme switch, e.g. a logout button. */
 		userActions?: Snippet;
 		/** Content of the sidebar (below the menu button on narrow screens). */
 		sidebar: Snippet;
@@ -71,15 +71,11 @@
 			</svg>
 		</button>
 		<a class="brand" href={resolve('/')}>Tasks</a>
-		<div class="header-end">
-			<ThemeSwitch />
-			{#if user}
-				<div class="user-menu">
-					<span class="user-name">{user.name}</span>
-					{@render userActions?.()}
-				</div>
-			{/if}
-		</div>
+		{#if user}
+			<div class="header-end">
+				<UserMenu name={user.name} actions={userActions} />
+			</div>
+		{/if}
 	</header>
 
 	<div class="body">
@@ -135,22 +131,6 @@
 		gap: var(--space-4);
 		margin-left: auto;
 		min-width: 0;
-	}
-
-	.user-menu {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		min-width: 0;
-	}
-
-	.user-name {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 12rem;
-		font-size: 0.875rem;
-		color: var(--muted);
 	}
 
 	.menu-button {
@@ -237,10 +217,6 @@
 			padding-right: max(var(--space-3), env(safe-area-inset-right));
 			padding-left: max(var(--space-3), env(safe-area-inset-left));
 			gap: var(--space-2);
-		}
-
-		.user-name {
-			display: none;
 		}
 	}
 </style>

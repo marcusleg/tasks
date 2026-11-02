@@ -34,7 +34,11 @@ export async function createList(page: Page, name: string): Promise<void> {
 
 export async function addTask(page: Page, title: string): Promise<void> {
 	await saved(page, async () => {
-		await page.getByRole('textbox', { name: 'Add a task' }).fill(title);
+		// The focused List is the one the page is about (the others sit beside it as columns).
+		await page
+			.locator('[data-column][data-focused]')
+			.getByRole('textbox', { name: 'Add a task' })
+			.fill(title);
 		await page.keyboard.press('Enter');
 	});
 }
