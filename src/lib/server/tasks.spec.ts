@@ -1,4 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import {
+	dateOnly,
+	serializeDueDate,
+	serializePlannedDate,
+	timedDueDate,
+	timedPlannedDate,
+	unsetDate
+} from '#lib/domain/dates.js';
 import { completedTasksOf, openTasksOf, serializeTask } from '#lib/domain/tasks.js';
 import { InvalidInputError } from '#lib/domain/validation.js';
 import { tasks } from './db/schema';
@@ -356,5 +364,87 @@ describe('cross-User isolation', () => {
 		expect(getTask(bob, task.id)).toBeUndefined();
 		expect(getListTasks(bob, list.id)).toEqual([]);
 		expect(titles(getTasksOfLists(bob, [list.id, bobs.id]))).toEqual(['Bob task']);
+	});
+});
+
+describe('Planned Date, Due Date and Priority', () => {
+	const planned = timedPlannedDate('2026-11-04T09:00', 'Europe/Berlin', 45);
+	const due = timedDueDate('2026-11-06T17:30', 'America/New_York');
+
+	it('creates a Task with dates and a Priority', () => {
+		const { alice, list } = setUp();
+
+		const task = createTask(alice, {
+			listId: list.id,
+			title: 'Call the bank',
+			planned,
+			due: dateOnly('2026-11-06'),
+			priority: 'high'
+		})?.upserted[0];
+
+		expect(task && serializeTask(task)).toMatchObject({
+			planned: serializePlannedDate(planned),
+			due: { kind: 'date', date: '2026-11-06' },
+			priority: 'high'
+		});
+	});
+
+	it('sets, changes and clears each field, keeping the zone it was given', () => {
+		const { alice, list } = setUp();
+		const task = add(alice, list.id, 'Call the bank');
+
+		updateTask(alice, task.id, { planned, due, priority: 'medium' });
+		const set = getTask(alice, task.id)!;
+		expect(serializePlannedDate(set.planned)).toEqual(serializePlannedDate(planned));
+		expect(serializeDueDate(set.due)).toEqual(serializeDueDate(due));
+		expect(set.priority).toBe('medium');
+
+		updateTask(alice, task.id, { planned: dateOnly('2026-11-05'), priority: 'low' });
+		expect(getTask(alice, task.id)).toMatchObject({
+			planned: { kind: 'date' },
+			due: { kind: 'timed', timeZone: 'America/New_York' },
+			priority: 'low'
+		});
+
+		updateTask(alice, task.id, { planned: unsetDate, due: unsetDate, priority: null });
+		expect(getTask(alice, task.id)).toMatchObject({
+			planned: { kind: 'unset' },
+			due: { kind: 'unset' },
+			priority: null
+		});
+	});
+
+	it('leaves dates and their zones alone when other fields change', () => {
+		const { alice, list } = setUp();
+		const task = add(alice, list.id, 'Call the bank');
+		updateTask(alice, task.id, { planned, due });
+
+		updateTask(alice, task.id, { title: 'Call the bank again', priority: 'high' });
+
+		const after = getTask(alice, task.id)!;
+		expect(serializePlannedDate(after.planned)).toEqual(serializePlannedDate(planned));
+		expect(serializeDueDate(after.due)).toEqual(serializeDueDate(due));
+	});
+
+	it('saves a Planned Date after the Due Date', () => {
+		const { alice, list } = setUp();
+		const task = add(alice, list.id, 'Late');
+
+		updateTask(alice, task.id, { planned: dateOnly('2026-11-10'), due: dateOnly('2026-11-04') });
+
+		expect(getTask(alice, task.id)).toMatchObject({
+			planned: { kind: 'date' },
+			due: { kind: 'date' }
+		});
+	});
+
+	it('marks a generated Occurrence as changed when a date or the Priority changes', () => {
+		const { alice, db, list } = setUp();
+		const task = add(alice, list.id, 'Water plants');
+		db.update(tasks).set({ changedSinceGenerated: false }).run();
+
+		updateTask(alice, task.id, { priority: 'low' });
+
+		expect(getTask(alice, task.id)?.changedSinceGenerated).toBe(true);
 	});
 });

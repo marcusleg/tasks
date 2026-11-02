@@ -5,7 +5,8 @@
 import { resolve } from '$app/paths';
 import type { SerializedCalendarLink } from '#lib/domain/calendar-links.js';
 import type { SerializedList, SortMode } from '#lib/domain/lists.js';
-import type { TaskChanges } from '#lib/domain/tasks.js';
+import type { SerializedDueDate, SerializedPlannedDate } from '#lib/domain/dates.js';
+import type { Priority, TaskChanges } from '#lib/domain/tasks.js';
 
 export class ApiError extends Error {
 	constructor(
@@ -43,6 +44,15 @@ async function request<T>(method: string, path: string, body?: object): Promise<
 	return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
+/** The Task fields a PATCH can change. */
+export interface TaskPatch {
+	title?: string;
+	description?: string;
+	planned?: SerializedPlannedDate;
+	due?: SerializedDueDate;
+	priority?: Priority | null;
+}
+
 const list = (id: string) => resolve('/api/lists/[id]', { id });
 const task = (id: string) => resolve('/api/tasks/[id]', { id });
 
@@ -69,9 +79,11 @@ export const api = {
 		title: string;
 		description?: string;
 		parentId?: string | null;
+		planned?: SerializedPlannedDate;
+		due?: SerializedDueDate;
+		priority?: Priority | null;
 	}) => request<TaskChanges>('POST', resolve('/api/tasks'), input),
-	updateTask: (id: string, patch: { title?: string; description?: string }) =>
-		request<TaskChanges>('PATCH', task(id), patch),
+	updateTask: (id: string, patch: TaskPatch) => request<TaskChanges>('PATCH', task(id), patch),
 	completeTask: (id: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/complete', { id }), {}),
 	reopenTask: (id: string) =>

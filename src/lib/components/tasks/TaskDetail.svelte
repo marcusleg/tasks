@@ -10,6 +10,8 @@
 	} from '#lib/domain/tasks.js';
 	import AddTaskRow from './AddTaskRow.svelte';
 	import TaskRow from './TaskRow.svelte';
+	import PriorityField from './PriorityField.svelte';
+	import TaskDateFields from './TaskDateFields.svelte';
 
 	/**
 	 * The Task detail panel: a side panel on wide screens, a full-screen sheet on narrow ones.
@@ -27,6 +29,9 @@
 	const store = getTaskStore();
 	const id = $props.id();
 	const SAVE_DELAY_MS = 500;
+	// The panel is keyed by Task id. Closing it (e.g. with Esc mid-debounce) flushes the drafts
+	// after the props are gone, so the id is captured here; the drafts are this component's own.
+	const taskId = untrack(() => task.id);
 
 	// Drafts, so answers from the server never overwrite what is being typed.
 	let title = $state(untrack(() => task.title));
@@ -60,7 +65,7 @@
 			title: patch.title ?? saved.title,
 			description: patch.description ?? saved.description
 		};
-		void store.update(task.id, patch);
+		void store.update(taskId, patch);
 	}
 
 	function scheduleSave() {
@@ -206,7 +211,13 @@
 			{/if}
 		</div>
 
-		<!-- #8 (dates), #9 (Priority) and #16 (Recurrence) add their fields here. -->
+		<TaskDateFields {task} />
+		<PriorityField
+			value={task.priority}
+			onchange={(priority) => store.update(task.id, { priority })}
+		/>
+
+		<!-- #16 (Recurrence) adds its fields here. -->
 
 		{#if task.parentId === null}
 			<section class="subtasks" aria-labelledby="{id}-subtasks">

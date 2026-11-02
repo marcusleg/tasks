@@ -7,13 +7,15 @@ import {
 	withInputErrors
 } from '#lib/server/http.js';
 import { userScope } from '#lib/server/scope.js';
+import { readDatesAndPriority } from '#lib/server/task-input.js';
 import { createTask, serializeChanges } from '#lib/server/tasks.js';
 import type { RequestHandler } from './$types';
 
 /**
  * Adds a Task at the top of a List, or with `parentId` a Subtask at the bottom of its parent's:
- * `{ id?, listId, title, description?, parentId? }` → `TaskChanges`. 400 if the parent is a
- * Subtask itself or Completed.
+ * `{ id?, listId, title, description?, parentId?, planned?, due?, priority? }` → `TaskChanges`.
+ * Dates use the serialized shapes from `#lib/domain/dates` (`null` = unset). 400 if the parent is
+ * a Subtask itself or Completed.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const scope = userScope(locals);
@@ -23,7 +25,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		listId: requiredString(body, 'listId'),
 		title: requiredString(body, 'title'),
 		description: optionalString(body, 'description'),
-		parentId: body.parentId === null ? null : optionalString(body, 'parentId')
+		parentId: body.parentId === null ? null : optionalString(body, 'parentId'),
+		...readDatesAndPriority(body)
 	};
 
 	const changes = withInputErrors(() => createTask(scope, input));

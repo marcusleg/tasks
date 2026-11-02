@@ -7,10 +7,12 @@
  * these functions, and the browser applies whatever comes back.
  */
 import { and, asc, eq, inArray, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
+import type { DueDate, PlannedDate } from '#lib/domain/dates.js';
 import {
 	parseDescription,
 	parseTitle,
 	serializeTask,
+	type Priority,
 	type Task,
 	type TaskChanges
 } from '#lib/domain/tasks.js';
@@ -22,7 +24,7 @@ import {
 	type CompletionChange
 } from '#lib/domain/subtasks.js';
 import { InvalidInputError, isId } from '#lib/domain/validation.js';
-import { toTask } from './db/mapping.js';
+import { dueColumns, plannedColumns, toTask } from './db/mapping.js';
 import { tasks } from './db/schema.js';
 import { getList } from './lists.js';
 import { ownedBy, type UserScope } from './scope.js';
@@ -96,6 +98,9 @@ export interface NewTask {
 	description?: string;
 	/** Makes the Task a Subtask of this open top-level Task, which must be in the same List. */
 	parentId?: string | null;
+	planned?: PlannedDate;
+	due?: DueDate;
+	priority?: Priority | null;
 }
 
 /**
@@ -126,7 +131,8 @@ export function createTask(scope: UserScope, input: NewTask): TaskChangeSet | un
 			parentId,
 			title,
 			description,
-			position: newTaskPosition(siblingPositions(scope, input.listId, parentId), parentId)
+			position: newTaskPosition(siblingPositions(scope, input.listId, parentId), parentId),
+			...dateAndPriorityColumns(input)
 		})
 		.returning()
 		.get();
@@ -136,15 +142,33 @@ export function createTask(scope: UserScope, input: NewTask): TaskChangeSet | un
 export interface TaskPatch {
 	title?: string;
 	description?: string;
+	/**
+	 * Saved as given, zone included: the browser sends its own zone only for a date it just edited,
+	 * so changing other fields never moves a timed date to another zone.
+	 */
+	planned?: PlannedDate;
+	due?: DueDate;
+	priority?: Priority | null;
 }
 
-/** Changes a Task's Title and/or Description. `undefined` if it isn't the User's. */
+/** The columns for whichever of the dates and Priority are given. */
+function dateAndPriorityColumns(
+	fields: Pick<TaskPatch, 'planned' | 'due' | 'priority'>
+): Partial<typeof tasks.$inferInsert> {
+	return {
+		...(fields.planned && plannedColumns(fields.planned)),
+		...(fields.due && dueColumns(fields.due)),
+		...(fields.priority !== undefined && { priority: fields.priority })
+	};
+}
+
+/** Changes a Task's Title, Description, dates or Priority. `undefined` if it isn't the User's. */
 export function updateTask(
 	scope: UserScope,
 	id: string,
 	patch: TaskPatch
 ): TaskChangeSet | undefined {
-	const values: Partial<typeof tasks.$inferInsert> = {};
+	const values: Partial<typeof tasks.$inferInsert> = dateAndPriorityColumns(patch);
 	if (patch.title !== undefined) values.title = parseTitle(patch.title);
 	if (patch.description !== undefined) values.description = parseDescription(patch.description);
 	if (Object.keys(values).length === 0) {

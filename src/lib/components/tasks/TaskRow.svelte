@@ -3,12 +3,14 @@
 	import { openTask, openTaskId } from '#lib/client/task-panel.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import type { SerializedTask } from '#lib/domain/tasks.js';
+	import PriorityPicker from './PriorityPicker.svelte';
+	import TaskDateChips from './TaskDateChips.svelte';
 
 	type Props = {
 		task: SerializedTask;
 		/**
-		 * Extra details under the Title, e.g. Planned/Due chips (#8) or the Priority marker (#9).
-		 * Subtasks (#7) render after the row, in the List.
+		 * Extra details under the Title and the Planned/Due chips. Subtasks (#7) render after the
+		 * row, in the List.
 		 */
 		meta?: Snippet<[SerializedTask]>;
 		/** At the end of the row, e.g. the toggle that collapses a parent's Subtasks. */
@@ -54,8 +56,10 @@
 		{#if task.description}
 			<p class="description">{task.description}</p>
 		{/if}
+		<TaskDateChips {task} />
 		{@render meta?.(task)}
 	</div>
+	<PriorityPicker {task} />
 	{@render trailing?.()}
 </li>
 
