@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { loginAs } from './auth';
 
 test('GET /healthz reports ok', async ({ request }) => {
 	const response = await request.get('/healthz');
@@ -8,7 +9,7 @@ test('GET /healthz reports ok', async ({ request }) => {
 });
 
 test('home page renders', async ({ page }) => {
-	await page.goto('/');
+	await loginAs(page);
 
 	await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible();
 });

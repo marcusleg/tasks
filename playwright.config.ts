@@ -2,9 +2,15 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
-
-// E2E_PORT lets several checkouts run the suite side by side.
-const port = Number(process.env.E2E_PORT ?? 4173);
+import {
+	allowedGroup,
+	appOrigin,
+	appPort,
+	oidcClientId,
+	oidcClientSecret,
+	oidcIssuer,
+	oidcPort
+} from './e2e/env';
 
 // Every run gets a fresh database. Set once in the main process so workers,
 // which re-evaluate this file, inherit the same path.
@@ -16,16 +22,40 @@ export default defineConfig({
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 1 : 0,
 	reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
-	use: { baseURL: `http://localhost:${port}` },
+	use: {
+		baseURL: appOrigin,
+		// adapter-node assumes https unless PROTOCOL_HEADER says otherwise, which
+		// would make SvelteKit's CSRF origin check reject every form post over
+		// plain http. Play the reverse proxy's part (see "Reverse proxy" in the README).
+		extraHTTPHeaders: { 'x-forwarded-proto': 'http' }
+	},
 	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-	webServer: {
-		command: 'npm run build && node build',
-		url: `http://localhost:${port}/healthz`,
-		reuseExistingServer: false,
-		timeout: 120_000,
-		env: {
-			PORT: String(port),
-			DATABASE_PATH: process.env.E2E_DATABASE_PATH
+	webServer: [
+		{
+			command: 'node e2e/oidc-mock.ts',
+			url: `${oidcIssuer}/.well-known/openid-configuration`,
+			reuseExistingServer: false,
+			env: {
+				E2E_OIDC_PORT: String(oidcPort),
+				MOCK_OIDC_CLIENT_ID: oidcClientId,
+				MOCK_OIDC_CLIENT_SECRET: oidcClientSecret
+			}
+		},
+		{
+			command: 'npm run build && node build',
+			url: `${appOrigin}/healthz`,
+			reuseExistingServer: false,
+			timeout: 120_000,
+			env: {
+				PORT: String(appPort),
+				DATABASE_PATH: process.env.E2E_DATABASE_PATH,
+				ORIGIN: appOrigin,
+				PROTOCOL_HEADER: 'x-forwarded-proto',
+				OIDC_ISSUER: oidcIssuer,
+				OIDC_CLIENT_ID: oidcClientId,
+				OIDC_CLIENT_SECRET: oidcClientSecret,
+				OIDC_ALLOWED_GROUP: allowedGroup
+			}
 		}
-	}
+	]
 });
