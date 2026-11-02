@@ -117,14 +117,36 @@
 	}
 
 	.brand {
+		position: relative;
+		padding-block: 0.3em;
 		color: var(--fg);
 		font-weight: 700;
 		font-size: 1.125rem;
+		line-height: 1;
 		text-decoration: none;
 	}
 
+	.brand::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		width: 100%;
+		height: 3px;
+		border-radius: 2px;
+		background: var(--brand-rule);
+		transform-origin: left;
+		transition: transform 0.25s ease;
+	}
+
+	/* The text keeps its colour; the rule shrinks back like a progress bar. */
 	.brand:hover {
-		color: var(--accent-purple);
+		color: var(--fg);
+	}
+
+	.brand:hover::after,
+	.brand:focus-visible::after {
+		transform: scaleX(0.35);
 	}
 
 	.header-end {
