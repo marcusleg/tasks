@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import type { Snippet } from 'svelte';
 	import { getTaskDrag } from '#lib/client/task-drag.svelte.js';
 	import { openTask, openTaskId } from '#lib/client/task-panel.js';
@@ -48,6 +49,7 @@
 			type="button"
 			class="handle"
 			data-task-handle
+			disabled={!hydration.done}
 			aria-label="Move task"
 			aria-describedby="{titleId} task-move-hint"
 			onpointerdown={(event) => drag.start(event, task)}
@@ -64,7 +66,13 @@
 		</button>
 	{/if}
 	<label class="check">
-		<input type="checkbox" checked={completed} onchange={toggle} aria-label={task.title} />
+		<input
+			type="checkbox"
+			checked={completed}
+			disabled={!hydration.done}
+			onchange={toggle}
+			aria-label={task.title}
+		/>
 		<svg viewBox="0 0 24 24" aria-hidden="true">
 			<path
 				d="M6 12.5l4 4 8-9"
@@ -81,6 +89,7 @@
 			id={titleId}
 			type="button"
 			class="open"
+			disabled={!hydration.done}
 			aria-haspopup="dialog"
 			aria-expanded={selected}
 			onclick={() => openTask(task.id)}

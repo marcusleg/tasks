@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -88,7 +89,7 @@
 
 <div class="switcher">
 	<label class="visually-hidden" for="list-switcher">List</label>
-	<select id="list-switcher" value={focus.id} onchange={switchTo}>
+	<select id="list-switcher" value={focus.id} disabled={!hydration.done} onchange={switchTo}>
 		{#each lists.all as list (list.id)}
 			<option value={list.id}>{list.name}</option>
 		{/each}

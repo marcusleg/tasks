@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import type { Snippet } from 'svelte';
 	import { tick } from 'svelte';
 	import ThemeSwitch from './ThemeSwitch.svelte';
@@ -57,6 +58,7 @@
 		bind:this={button}
 		type="button"
 		class="trigger"
+		disabled={!hydration.done}
 		aria-label="User menu"
 		aria-expanded={open}
 		aria-controls="{id}-popover"

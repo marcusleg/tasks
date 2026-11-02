@@ -174,3 +174,8 @@ svg {
 		animation-duration: 0.01ms !important;
 	}
 }
+
+/* Controls are disabled until hydration (see hydration.svelte.ts); don't grey them out for it. */
+:where(html:not([data-hydrated])) :where(button, select, input):disabled {
+	color: inherit;
+}

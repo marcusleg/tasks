@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -54,6 +55,7 @@
 		<button
 			bind:this={menuButton}
 			class="menu-button"
+			disabled={!hydration.done}
 			type="button"
 			aria-expanded={open}
 			aria-controls="app-sidebar"

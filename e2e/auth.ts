@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, type BrowserContext, type Page } from '@playwright/test';
+import { waitForHydration, waitForHydrationOnNavigation } from './hydration';
 import { allowedGroup, appOrigin, oidcIssuer } from './env';
 
 export interface TestUser {
@@ -46,6 +47,7 @@ export async function loginAs(
 	{ returnTo = '/' }: { returnTo?: string } = {}
 ): Promise<TestUser> {
 	const full = await setMockUser(page.context(), user);
+	waitForHydrationOnNavigation(page);
 
 	await page.goto(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
 	await page.getByRole('button', { name: 'Sign in' }).click();
@@ -58,6 +60,7 @@ export async function loginAs(
 		throw new Error(`loginAs: ${full.sub} was not allowed to sign in (groups: ${full.groups})`);
 	}
 
+	await waitForHydration(page);
 	return full;
 }
 

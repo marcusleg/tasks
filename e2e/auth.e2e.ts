@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { loginAs, logout, sessionCookie, setMockUser } from './auth';
 import { appOrigin } from './env';
 

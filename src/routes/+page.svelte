@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getListStore } from '#lib/client/lists.svelte.js';
@@ -34,11 +35,12 @@
 			<div class="row">
 				<input
 					id="first-list-name"
+					disabled={!hydration.done}
 					bind:value={name}
 					maxlength={MAX_LIST_NAME_LENGTH}
 					autocomplete="off"
 				/>
-				<button type="submit">Create list</button>
+				<button type="submit" disabled={!hydration.done}>Create list</button>
 			</div>
 		</form>
 	</section>

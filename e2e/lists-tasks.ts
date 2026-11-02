@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { waitForHydration } from './hydration';
 
 /**
  * Helpers for driving Lists and Tasks. Mutations are optimistic, so anything that reloads
@@ -29,10 +30,20 @@ export async function createList(page: Page, name: string): Promise<void> {
 		await sidebar(page).getByRole('textbox', { name: 'New list name' }).fill(name);
 		await page.keyboard.press('Enter');
 	});
-	await expect(page.getByRole('heading', { name, level: 2 })).toBeVisible();
+	// The page navigates to the new List once it is saved. Until the List is the focused one,
+	// "Add a task" still belongs to the previous List.
+	await expectFocused(page, name);
+}
+
+/** Waits until the List with this name is the one the page is about (the focused column). */
+export async function expectFocused(page: Page, name: string): Promise<void> {
+	await expect(
+		page.locator('[data-column][data-focused]').getByRole('heading', { name, level: 2 })
+	).toBeVisible();
 }
 
 export async function addTask(page: Page, title: string): Promise<void> {
+	await waitForHydration(page);
 	await saved(page, async () => {
 		// The focused List is the one the page is about (the others sit beside it as columns).
 		await page
