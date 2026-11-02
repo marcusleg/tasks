@@ -10,7 +10,11 @@ import { userScope } from '#lib/server/scope.js';
 import { createTask, serializeChanges } from '#lib/server/tasks.js';
 import type { RequestHandler } from './$types';
 
-/** Adds a Task at the top of a List: `{ id?, listId, title, description?, parentId? }` → `TaskChanges`. */
+/**
+ * Adds a Task at the top of a List, or with `parentId` a Subtask at the bottom of its parent's:
+ * `{ id?, listId, title, description?, parentId? }` → `TaskChanges`. 400 if the parent is a
+ * Subtask itself or Completed.
+ */
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const scope = userScope(locals);
 	const body = await readJson(request);

@@ -10,7 +10,6 @@
  */
 import { getContext, setContext } from 'svelte';
 import { invalidate } from '$app/navigation';
-import { generateKeyBetween } from 'fractional-indexing';
 import {
 	byCustomOrder,
 	completedTasksOf,
@@ -18,6 +17,15 @@ import {
 	type SerializedTask,
 	type TaskChanges
 } from '#lib/domain/tasks.js';
+import {
+	completedGroupsOf,
+	completionChanges,
+	newTaskPosition,
+	reopenChanges,
+	subtasksOf,
+	type CompletedGroup,
+	type CompletionChange
+} from '#lib/domain/subtasks.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
 import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
 import { api } from './api.js';
@@ -61,6 +69,22 @@ export class TaskStore {
 		return completedTasksOf(Object.values(this.#tasks), listId);
 	}
 
+	/** The Subtasks of a Task, open and Completed, in Custom Order. */
+	subtasks(parentId: string): SerializedTask[] {
+		return subtasksOf(Object.values(this.#tasks), parentId);
+	}
+
+	/** A List's Completed section: Completed Tasks, and Completed Subtasks of open parents. */
+	completedGroups(listId: string): CompletedGroup<SerializedTask>[] {
+		return completedGroupsOf(Object.values(this.#tasks), listId);
+	}
+
+	/** How many Tasks of a List (Subtasks included) are Completed. */
+	completedCount(listId: string): number {
+		return Object.values(this.#tasks).filter((task) => task.listId === listId && task.completedAt)
+			.length;
+	}
+
 	/** Applies a server answer. */
 	apply(changes: TaskChanges): void {
 		const next = { ...this.#tasks };
@@ -72,6 +96,14 @@ export class TaskStore {
 	#patchLocal(id: string, patch: Partial<SerializedTask>): void {
 		const task = this.#tasks[id];
 		if (task) this.#tasks = { ...this.#tasks, [id]: { ...task, ...patch } };
+	}
+
+	#applyCompletion(changes: CompletionChange<string>[]): void {
+		const next = { ...this.#tasks };
+		for (const { id, ...patch } of changes) {
+			if (next[id]) next[id] = { ...next[id], ...patch };
+		}
+		this.#tasks = next;
 	}
 
 	/**
@@ -95,13 +127,16 @@ export class TaskStore {
 		return result;
 	}
 
-	/** Adds a Task at the top of a List. Returns its id right away. */
+	/**
+	 * Adds a Task at the top of a List, or a Subtask at the bottom of its parent's Subtasks.
+	 * Returns its id right away.
+	 */
 	add(listId: string, title: string, parentId: string | null = null): string {
 		const id = newId();
 		const now = timestamp();
-		const first = Object.values(this.#tasks)
-			.filter((task) => task.listId === listId && task.parentId === parentId)
-			.sort(byCustomOrder)[0];
+		const siblings = Object.values(this.#tasks).filter(
+			(task) => task.listId === listId && task.parentId === parentId
+		);
 		this.#tasks = {
 			...this.#tasks,
 			[id]: {
@@ -110,7 +145,7 @@ export class TaskStore {
 				parentId,
 				title: title.trim(),
 				description: '',
-				position: generateKeyBetween(null, first?.position ?? null),
+				position: newTaskPosition(siblings, parentId),
 				planned: null,
 				due: null,
 				priority: null,
@@ -135,13 +170,15 @@ export class TaskStore {
 		return this.#send('save the task', () => api.updateTask(id, patch));
 	}
 
+	/** Completes a Task and, with it, its open Subtasks (the cascade in `#lib/domain/subtasks`). */
 	complete(id: string): Promise<boolean> {
-		this.#patchLocal(id, { completedAt: timestamp() });
+		this.#applyCompletion(completionChanges(Object.values(this.#tasks), id, timestamp()));
 		return this.#send('complete the task', () => api.completeTask(id));
 	}
 
+	/** Reopens a Task with the Subtasks its completion closed, or a Subtask with its parent. */
 	reopen(id: string): Promise<boolean> {
-		this.#patchLocal(id, { completedAt: null, completedByCascade: false });
+		this.#applyCompletion(reopenChanges(Object.values(this.#tasks), id));
 		return this.#send('reopen the task', () => api.reopenTask(id));
 	}
 
