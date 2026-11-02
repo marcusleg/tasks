@@ -17,10 +17,13 @@
 
 <style>
 	.auth-page {
-		max-width: 28rem;
+		max-width: 26rem;
 		margin: 15vh auto 0;
-		padding: 0 1rem;
-		font-family: system-ui, sans-serif;
+		padding: 0 var(--space-4);
 		text-align: center;
+	}
+
+	h1 {
+		margin-bottom: var(--space-4);
 	}
 </style>

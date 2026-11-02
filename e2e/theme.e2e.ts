@@ -1,4 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { loginAs } from './auth';
+
+test.beforeEach(async ({ page }) => {
+	await loginAs(page);
+});
 
 const theme = (page: import('@playwright/test').Page) =>
 	page.evaluate(() => document.documentElement.dataset.theme);

@@ -26,26 +26,40 @@
 
 <style>
 	.auth-page {
-		max-width: 24rem;
+		max-width: 26rem;
 		margin: 15vh auto 0;
-		padding: 0 1rem;
-		font-family: system-ui, sans-serif;
+		padding: 0 var(--space-4);
 		text-align: center;
 	}
 
+	h1 {
+		margin-bottom: var(--space-4);
+	}
+
 	.message {
-		padding: 0.5rem 0.75rem;
-		border: 1px solid currentColor;
-		border-radius: 0.25rem;
+		padding: var(--space-2) var(--space-3);
+		margin-bottom: var(--space-4);
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
 	}
 
 	.error {
-		color: #b00020;
+		border-color: var(--accent-pink);
 	}
 
 	button {
 		font: inherit;
-		padding: 0.5rem 1.5rem;
+		font-weight: 700;
+		color: var(--on-accent);
+		background: var(--accent-purple);
+		border: none;
+		border-radius: var(--radius-md);
+		padding: var(--space-2) var(--space-6);
 		cursor: pointer;
+	}
+
+	button:hover {
+		background: var(--accent-pink);
 	}
 </style>
