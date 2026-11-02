@@ -6,8 +6,7 @@
  * touch several Tasks at once (the completion cascade in #7, the next Occurrence in #16) belong in
  * these functions, and the browser applies whatever comes back.
  */
-import { and, asc, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
-import { generateKeyBetween } from 'fractional-indexing';
+import { and, asc, eq, inArray, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
 import {
 	parseDescription,
 	parseTitle,
@@ -15,6 +14,13 @@ import {
 	type Task,
 	type TaskChanges
 } from '#lib/domain/tasks.js';
+import {
+	completionChanges,
+	nestingError,
+	newTaskPosition,
+	reopenChanges,
+	type CompletionChange
+} from '#lib/domain/subtasks.js';
 import { InvalidInputError, isId } from '#lib/domain/validation.js';
 import { toTask } from './db/mapping.js';
 import { tasks } from './db/schema.js';
@@ -63,9 +69,13 @@ export function getTask(scope: UserScope, id: string): Task | undefined {
 	return row && toTask(row);
 }
 
-/** The first position among the siblings in (list, parent), or `null` if there are none. */
-function firstPosition(scope: UserScope, listId: string, parentId: string | null): string | null {
-	const row = scope.db
+/** The positions of the siblings in (list, parent), to place a new Task among them. */
+function siblingPositions(
+	scope: UserScope,
+	listId: string,
+	parentId: string | null
+): { position: string }[] {
+	return scope.db
 		.select({ position: tasks.position })
 		.from(tasks)
 		.where(
@@ -75,10 +85,7 @@ function firstPosition(scope: UserScope, listId: string, parentId: string | null
 				parentId === null ? isNull(tasks.parentId) : eq(tasks.parentId, parentId)
 			)
 		)
-		.orderBy(asc(tasks.position))
-		.limit(1)
-		.get();
-	return row?.position ?? null;
+		.all();
 }
 
 export interface NewTask {
@@ -87,12 +94,13 @@ export interface NewTask {
 	listId: string;
 	title: string;
 	description?: string;
-	/** Makes the Task a Subtask of this top-level Task, which must be in the same List. */
+	/** Makes the Task a Subtask of this open top-level Task, which must be in the same List. */
 	parentId?: string | null;
 }
 
 /**
- * Creates a Task at the top of its List's Custom Order (or its parent's, for a Subtask).
+ * Creates a Task at the top of its List's Custom Order, or a Subtask at the bottom of its parent's
+ * Subtasks. The parent must be an open top-level Task (see `nestingError`).
  * Returns `undefined` when the List or parent isn't the User's. Throws `InvalidInputError`.
  */
 export function createTask(scope: UserScope, input: NewTask): TaskChangeSet | undefined {
@@ -105,9 +113,8 @@ export function createTask(scope: UserScope, input: NewTask): TaskChangeSet | un
 	if (parentId !== null) {
 		const parent = getTask(scope, parentId);
 		if (!parent || parent.listId !== input.listId) return undefined;
-		if (parent.parentId !== null) {
-			throw new InvalidInputError('A Subtask cannot have Subtasks of its own');
-		}
+		const problem = nestingError(parent);
+		if (problem) throw new InvalidInputError(problem);
 	}
 
 	const row = scope.db
@@ -119,7 +126,7 @@ export function createTask(scope: UserScope, input: NewTask): TaskChangeSet | un
 			parentId,
 			title,
 			description,
-			position: generateKeyBetween(null, firstPosition(scope, input.listId, parentId))
+			position: newTaskPosition(siblingPositions(scope, input.listId, parentId), parentId)
 		})
 		.returning()
 		.get();
@@ -157,10 +164,45 @@ export function updateTask(
 }
 
 /**
- * Marks a Task Completed. Completing an already Completed Task changes nothing.
- * `undefined` if the Task isn't the User's.
+ * The Task's family: its parent (if it is a Subtask) or itself, and all of that one's Subtasks.
+ * The completion rules (`#lib/domain/subtasks.ts`) work on these.
+ */
+function familyOf(scope: UserScope, task: Task): Task[] {
+	const rootId = task.parentId ?? task.id;
+	return scope.db
+		.select()
+		.from(tasks)
+		.where(owned(scope, or(eq(tasks.id, rootId), eq(tasks.parentId, rootId)) as SQL))
+		.all()
+		.map(toTask);
+}
+
+/** Writes completion changes in one transaction and returns the changed Tasks. */
+function applyCompletionChanges(
+	scope: UserScope,
+	changes: CompletionChange<Date>[]
+): TaskChangeSet {
+	const upserted = scope.db.transaction((tx) =>
+		changes.map(({ id, ...values }) =>
+			toTask(
+				tx
+					.update(tasks)
+					.set(values)
+					.where(owned(scope, eq(tasks.id, id)))
+					.returning()
+					.get()
+			)
+		)
+	);
+	return { upserted, deleted: [] };
+}
+
+/**
+ * Marks a Task Completed, and with it all of its open Subtasks (marked as closed by the cascade,
+ * so Reopen can restore exactly those). Completing the last open Subtask leaves the parent open.
+ * Completing an already Completed Task changes nothing. `undefined` if the Task isn't the User's.
  *
- * #7 adds the cascade to Subtasks here, #16 the next Occurrence.
+ * #16 adds the next Occurrence here.
  */
 export function completeTask(
 	scope: UserScope,
@@ -169,35 +211,20 @@ export function completeTask(
 ): TaskChangeSet | undefined {
 	const task = getTask(scope, id);
 	if (!task) return undefined;
-	if (task.completedAt) return noChanges();
-
-	const row = scope.db
-		.update(tasks)
-		.set({ completedAt: now, completedByCascade: false })
-		.where(owned(scope, eq(tasks.id, id)))
-		.returning()
-		.get();
-	return { upserted: [toTask(row)], deleted: [] };
+	return applyCompletionChanges(scope, completionChanges(familyOf(scope, task), id, now));
 }
 
 /**
- * Reopens a Completed Task. Reopening an open Task changes nothing. `undefined` if the Task isn't
- * the User's.
+ * Reopens a Completed Task: a parent together with the Subtasks its completion closed, a Subtask
+ * together with its parent if that is Completed (see `reopenChanges`). Reopening an open Task
+ * changes nothing. `undefined` if the Task isn't the User's.
  *
- * #7 adds reopening the Subtasks its completion closed, #16 the Occurrence rules.
+ * #16 adds the Occurrence rules.
  */
 export function reopenTask(scope: UserScope, id: string): TaskChangeSet | undefined {
 	const task = getTask(scope, id);
 	if (!task) return undefined;
-	if (!task.completedAt) return noChanges();
-
-	const row = scope.db
-		.update(tasks)
-		.set({ completedAt: null, completedByCascade: false })
-		.where(owned(scope, eq(tasks.id, id)))
-		.returning()
-		.get();
-	return { upserted: [toTask(row)], deleted: [] };
+	return applyCompletionChanges(scope, reopenChanges(familyOf(scope, task), id));
 }
 
 /** Deletes a Task and its Subtasks. `undefined` if the Task isn't the User's. */
