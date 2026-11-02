@@ -3,6 +3,7 @@
  */
 import { Temporal } from 'temporal-polyfill';
 import { toZonedDateTime, type DueDate, type PlannedDate } from './dates';
+import { toRRules, type OccurrenceDates, type RecurrenceRule, type RRules } from './recurrence';
 import { vtimezone } from './vtimezone';
 
 export const DEFAULT_PRODID = '-//marcusleg//Tasks//EN';
@@ -22,6 +23,16 @@ export type CalendarTask = {
 	undatedSubtasks: { title: string; completed: boolean }[];
 	/** The parent's title, for a dated Subtask (published as its own CalendarTask). */
 	parentTitle?: string;
+	/** Set when the Task is the current Occurrence of a Recurrence. */
+	recurrence?: CalendarRecurrence;
+};
+
+export type CalendarRecurrence = {
+	/** Stable id shared by every Occurrence of the Recurrence; the series' UIDs derive from it. */
+	seriesId: string;
+	rule: RecurrenceRule;
+	/** How many Occurrences the series has had, including this one (the first is 1). */
+	occurrencesSoFar: number;
 };
 
 export type BuildCalendarInput = {
@@ -125,19 +136,24 @@ function timing(kind: EventKind, date: PlannedDate | DueDate, options: Options):
 	}
 }
 
+/** The events of one Occurrence, or of a series starting at it when `rrules` is given. */
+type Publication = { uidBase: string; dates: OccurrenceDates; rrules?: RRules };
+
 function event(
 	task: CalendarTask,
 	kind: EventKind,
-	date: PlannedDate | DueDate,
+	publication: Publication,
 	options: Options
 ): string[] {
-	const times = timing(kind, date, options);
+	const times = timing(kind, publication.dates[kind], options);
 	if (!times) return [];
+	const rrule = publication.rrules?.[kind];
 	return [
 		'BEGIN:VEVENT',
-		`UID:${task.id}-${kind}@tasks`,
+		`UID:${publication.uidBase}-${kind}@tasks`,
 		`DTSTAMP:${formatUtc(options.now)}`,
 		...times,
+		...(rrule ? [`RRULE:${rrule}`] : []),
 		`SUMMARY:${text(kind === 'due' ? `Due: ${task.title}` : task.title)}`,
 		`DESCRIPTION:${text(description(task))}`,
 		`URL:${task.url}`,
@@ -146,7 +162,7 @@ function event(
 }
 
 /** Whether the Planned and Due Dates are the same date, or the same time in the same zone. */
-function sameDate(planned: PlannedDate, due: DueDate): boolean {
+function sameDate({ planned, due }: OccurrenceDates): boolean {
 	if (planned.kind === 'date' && due.kind === 'date') return planned.date.equals(due.date);
 	if (planned.kind === 'timed' && due.kind === 'timed') {
 		return planned.timeZone === due.timeZone && planned.dateTime.equals(due.dateTime);
@@ -154,11 +170,24 @@ function sameDate(planned: PlannedDate, due: DueDate): boolean {
 	return false;
 }
 
+function publications(task: CalendarTask): Publication[] {
+	const dates: OccurrenceDates = { planned: task.planned, due: task.due };
+	const { recurrence } = task;
+	if (!recurrence || (dates.planned.kind === 'unset' && dates.due.kind === 'unset')) {
+		return [{ uidBase: task.id, dates }];
+	}
+	const rrules = toRRules(recurrence.rule, {
+		...dates,
+		occurrencesSoFar: recurrence.occurrencesSoFar
+	});
+	return [{ uidBase: recurrence.seriesId, dates, rrules }];
+}
+
 function taskEvents(task: CalendarTask, options: Options): string[] {
-	const planned = sameDate(task.planned, task.due)
-		? []
-		: event(task, 'planned', task.planned, options);
-	return [...planned, ...event(task, 'due', task.due, options)];
+	return publications(task).flatMap((publication) => [
+		...(sameDate(publication.dates) ? [] : event(task, 'planned', publication, options)),
+		...event(task, 'due', publication, options)
+	]);
 }
 
 const MAX_LINE_OCTETS = 75;

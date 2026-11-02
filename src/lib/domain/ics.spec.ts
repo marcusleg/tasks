@@ -1,8 +1,22 @@
 import ICAL from 'ical.js';
 import { Temporal } from 'temporal-polyfill';
 import { describe, expect, it } from 'vitest';
-import { dateOnly, timedDueDate, timedPlannedDate, unsetDate } from './dates';
+import {
+	dateOnly,
+	timedDueDate,
+	timedPlannedDate,
+	toZonedDateTime,
+	unsetDate,
+	type TaskDate
+} from './dates';
 import { buildCalendar, type CalendarTask } from './ics';
+import {
+	nextOccurrence,
+	parseRecurrence,
+	stepDriver,
+	type OccurrenceDates,
+	type RecurrenceRule
+} from './recurrence';
 
 const now = Temporal.Instant.from('2026-11-02T08:30:15.123Z');
 
@@ -540,4 +554,186 @@ describe('time zone definitions', () => {
 			expect(component.getAllSubcomponents().map((c) => c.name)).toEqual(['standard']);
 		}
 	);
+});
+
+function rule(json: Record<string, unknown>): RecurrenceRule {
+	return parseRecurrence({ interval: 1, end: { kind: 'never' }, anchor: 'schedule', ...json });
+}
+
+/** Start of a date as a comparable string: the date, or the UTC instant of a timed value. */
+function startOf(date: TaskDate): string {
+	if (date.kind === 'unset') throw new Error('unset date');
+	return date.kind === 'date' ? date.date.toString() : toZonedDateTime(date).toInstant().toString();
+}
+
+/**
+ * The Occurrences the app would create from `current` on, each completed on time (at its
+ * scheduled driving date), up to `limit`.
+ */
+function appSeries(
+	current: OccurrenceDates,
+	recurrence: RecurrenceRule,
+	occurrencesSoFar: number,
+	limit: number
+): OccurrenceDates[] {
+	const series = [current];
+	for (let n = occurrencesSoFar; series.length < limit; n++) {
+		const dates = series[series.length - 1];
+		const driver = dates[stepDriver(dates)];
+		const completedAt =
+			driver.kind === 'timed'
+				? toZonedDateTime(driver)
+				: driver.kind === 'date'
+					? driver.date.toZonedDateTime('UTC')
+					: undefined;
+		const next = nextOccurrence({ ...dates, rule: recurrence, occurrencesSoFar: n, completedAt });
+		if (!next) break;
+		series.push(next);
+	}
+	return series;
+}
+
+/** Starts of the event's occurrences as ical.js expands them, up to `limit`. */
+function expand(component: ICAL.Component, limit: number): string[] {
+	const iterator = new ICAL.Event(component).iterator();
+	const starts: string[] = [];
+	for (let next = iterator.next(); next && starts.length < limit; next = iterator.next()) {
+		starts.push(
+			next.isDate
+				? next.toString()
+				: Temporal.Instant.fromEpochMilliseconds(next.toUnixTime() * 1000).toString()
+		);
+	}
+	return starts;
+}
+
+function eventByUid(ics: string, uid: string): ICAL.Component {
+	const found = events(ics).filter((event) => event.getFirstPropertyValue('uid') === uid);
+	expect(found).toHaveLength(1);
+	return found[0];
+}
+
+describe('a recurring Task', () => {
+	const weekly = rule({ frequency: 'weekly', weekdays: [2] });
+	const current: OccurrenceDates = {
+		planned: timedPlannedDate('2026-10-20T09:00', 'Europe/Berlin', 60),
+		due: timedDueDate('2026-10-23T17:00', 'Europe/Berlin')
+	};
+	const recurring = task({
+		id: 'occurrence-3',
+		...current,
+		recurrence: { seriesId: 'series-1', rule: weekly, occurrencesSoFar: 3 }
+	});
+
+	it('publishes its Planned and Due events as series named after the Recurrence', () => {
+		const ics = calendarOf(recurring);
+
+		const planned = eventByUid(ics, 'series-1-planned@tasks');
+		const due = eventByUid(ics, 'series-1-due@tasks');
+		expect(planned.getFirstPropertyValue('rrule')?.toString()).toBe('FREQ=WEEKLY;BYDAY=TU');
+		expect(due.getFirstPropertyValue('rrule')?.toString()).toBe('FREQ=WEEKLY;BYDAY=FR');
+	});
+
+	it('expands, across DST changes, to the dates the app steps to', () => {
+		const ics = calendarOf(recurring);
+
+		const app = appSeries(current, weekly, 3, 30);
+		expect(expand(eventByUid(ics, 'series-1-planned@tasks'), 30)).toEqual(
+			app.map((dates) => startOf(dates.planned))
+		);
+		expect(expand(eventByUid(ics, 'series-1-due@tasks'), 30)).toEqual(
+			app.map((dates) => startOf(dates.due))
+		);
+	});
+
+	it('keeps its UIDs when an Occurrence is completed and the next one takes its place', () => {
+		const [next] = appSeries(current, weekly, 3, 2).slice(1);
+		const before = calendarOf(recurring);
+		const after = calendarOf(
+			task({
+				id: 'occurrence-4',
+				...next,
+				recurrence: { seriesId: 'series-1', rule: weekly, occurrencesSoFar: 4 }
+			})
+		);
+
+		const uids = (ics: string) => events(ics).map((event) => event.getFirstPropertyValue('uid'));
+		expect(uids(after)).toEqual(uids(before));
+		expect(
+			eventByUid(after, 'series-1-planned@tasks').getFirstPropertyValue('dtstart')?.toString()
+		).toBe('2026-10-27T09:00:00');
+	});
+});
+
+describe('a recurring series matches the app', () => {
+	function check(current: OccurrenceDates, recurrence: RecurrenceRule, occurrencesSoFar = 1) {
+		const ics = calendarOf(
+			task({ ...current, recurrence: { seriesId: 's', rule: recurrence, occurrencesSoFar } })
+		);
+		const app = appSeries(current, recurrence, occurrencesSoFar, 60);
+		for (const kind of ['planned', 'due'] as const) {
+			if (current[kind].kind === 'unset') continue;
+			expect(expand(eventByUid(ics, `s-${kind}@tasks`), 60), kind).toEqual(
+				app.map((dates) => startOf(dates[kind]))
+			);
+		}
+		return app;
+	}
+
+	it('for "after N times", publishing only the remaining Occurrences', () => {
+		const app = check(
+			{ planned: dateOnly('2026-11-04'), due: unsetDate },
+			rule({ frequency: 'daily', interval: 2, end: { kind: 'count', count: 5 } }),
+			2
+		);
+
+		expect(app).toHaveLength(4);
+	});
+
+	it('for an end date, in a timed series', () => {
+		const app = check(
+			{
+				planned: timedPlannedDate('2026-11-04T23:30', 'America/New_York'),
+				due: timedDueDate('2026-11-05T08:00', 'Europe/Berlin')
+			},
+			rule({ frequency: 'weekly', weekdays: [3, 6], end: { kind: 'until', date: '2027-02-27' } })
+		);
+
+		expect(app.length).toBeGreaterThan(20);
+		expect(app.length).toBeLessThan(60);
+	});
+
+	it('for a series counted from completion, assuming each Occurrence is completed on time', () => {
+		check(
+			{ planned: dateOnly('2027-01-31'), due: dateOnly('2027-02-02') },
+			rule({ frequency: 'monthly', monthDay: 31, anchor: 'completion' })
+		);
+	});
+
+	it('for a yearly series on Feb 29', () => {
+		check(
+			{ planned: unsetDate, due: dateOnly('2028-02-29') },
+			rule({ frequency: 'yearly', monthDay: 29 })
+		);
+	});
+
+	it('with a single Due series when both dates are the same', () => {
+		const current = {
+			planned: timedPlannedDate('2026-11-04T09:00', 'Europe/Berlin'),
+			due: timedDueDate('2026-11-04T09:00', 'Europe/Berlin')
+		};
+		const ics = calendarOf(
+			task({
+				...current,
+				recurrence: { seriesId: 's', rule: rule({ frequency: 'daily' }), occurrencesSoFar: 1 }
+			})
+		);
+
+		expect(events(ics).map((event) => event.getFirstPropertyValue('uid'))).toEqual(['s-due@tasks']);
+		expect(expand(events(ics)[0], 3)).toEqual([
+			'2026-11-04T08:00:00Z',
+			'2026-11-05T08:00:00Z',
+			'2026-11-06T08:00:00Z'
+		]);
+	});
 });
