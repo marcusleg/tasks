@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { getListStore } from '#lib/client/lists.svelte.js';
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { dropIndex } from '#lib/client/reorder.js';
 	import { MAX_LIST_NAME_LENGTH, moveToIndex } from '#lib/domain/lists.js';
 	import { invalidate } from '$app/navigation';
@@ -144,6 +145,7 @@
 						type="button"
 						class="handle"
 						data-reorder
+						disabled={!hydration.done}
 						aria-label="Reorder {list.name}"
 						aria-describedby="reorder-hint"
 						onpointerdown={(event) => dragStart(event, list.id, index)}
@@ -165,6 +167,7 @@
 						type="checkbox"
 						aria-label="Show {list.name}"
 						checked={list.visible}
+						disabled={!hydration.done}
 						onchange={(event) => toggle(list.id, event.currentTarget.checked)}
 					/>
 					<a
@@ -197,7 +200,12 @@
 				/>
 			</form>
 		{:else}
-			<button type="button" class="new-list-button" onclick={startCreating}>
+			<button
+				type="button"
+				class="new-list-button"
+				disabled={!hydration.done}
+				onclick={startCreating}
+			>
 				<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
 					<path
 						d="M12 5v14M5 12h14"

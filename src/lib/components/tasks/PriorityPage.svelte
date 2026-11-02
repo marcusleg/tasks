@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { onDestroy, tick } from 'svelte';
 	import { viewerTimeZone } from '#lib/client/clock.svelte.js';
 	import { getListStore } from '#lib/client/lists.svelte.js';
@@ -55,7 +56,7 @@
 
 <div class="switcher">
 	<label class="visually-hidden" for="{id}-switcher">Priority</label>
-	<select id="{id}-switcher" bind:value={shown}>
+	<select id="{id}-switcher" bind:value={shown} disabled={!hydration.done}>
 		{#each PRIORITIES as priority (priority)}
 			<option value={priority}>{PRIORITY_LABELS[priority]}</option>
 		{/each}

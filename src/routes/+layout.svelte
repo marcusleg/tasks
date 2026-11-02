@@ -9,6 +9,8 @@
 	import Toasts from '#lib/components/Toasts.svelte';
 	import { ListStore, setListStore } from '#lib/client/lists.svelte.js';
 	import { setToasts, Toasts as ToastQueue } from '#lib/client/toasts.svelte.js';
+	import { onMount } from 'svelte';
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';
 
@@ -16,6 +18,11 @@
 
 	const toasts = setToasts(new ToastQueue());
 	setListStore(new ListStore(() => data.lists, toasts));
+
+	onMount(() => {
+		hydration.done = true;
+		document.documentElement.dataset.hydrated = 'true';
+	});
 </script>
 
 <svelte:head>

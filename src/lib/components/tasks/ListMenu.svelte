@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	/**
 	 * The List header's options menu: a disclosure button and a short list of actions. Esc or a
 	 * click elsewhere closes it, returning focus to the button.
@@ -50,6 +51,7 @@
 		bind:this={button}
 		type="button"
 		class="trigger"
+		disabled={!hydration.done}
 		aria-label={label}
 		aria-expanded={open}
 		aria-controls="{id}-menu"

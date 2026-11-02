@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { navigating } from '$app/state';
+	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import { MAX_TITLE_LENGTH } from '#lib/domain/tasks.js';
 
@@ -13,6 +15,12 @@
 	const store = getTaskStore();
 	const id = $props.id();
 	let title = $state('');
+	// Not usable before hydration (Enter would submit a native form and lose the Title), nor while
+	// the page is navigating to another route, e.g. to another List: what is typed meanwhile
+	// would be about to belong to a List the User is leaving.
+	const leaving = $derived(
+		navigating.to !== null && navigating.to.url.pathname !== navigating.from?.url.pathname
+	);
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -48,6 +56,7 @@
 		{onkeydown}
 		placeholder={label}
 		maxlength={MAX_TITLE_LENGTH}
+		disabled={!hydration.done || leaving}
 		autocomplete="off"
 		enterkeyhint="enter"
 	/>
