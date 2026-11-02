@@ -49,6 +49,16 @@ export function optionalBoolean(body: JsonBody, key: string): boolean | undefine
 	return value;
 }
 
+/** A list-of-strings field, or `undefined` when absent. 400 for any other type. */
+export function optionalStringList(body: JsonBody, key: string): string[] | undefined {
+	const value = body[key];
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+		error(400, `${key} must be a list of strings`);
+	}
+	return value as string[];
+}
+
 /** Turns domain validation failures and id clashes into 400 and 409 responses. */
 export function withInputErrors<T>(run: () => T): T {
 	try {

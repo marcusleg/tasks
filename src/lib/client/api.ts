@@ -3,6 +3,7 @@
  * through here; pages get their initial data from `load` functions.
  */
 import { resolve } from '$app/paths';
+import type { SerializedCalendarLink } from '#lib/domain/calendar-links.js';
 import type { SerializedList, SortMode } from '#lib/domain/lists.js';
 import type { TaskChanges } from '#lib/domain/tasks.js';
 
@@ -67,5 +68,23 @@ export const api = {
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/complete', { id }), {}),
 	reopenTask: (id: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/reopen', { id }), {}),
-	deleteTask: (id: string) => request<TaskChanges>('DELETE', task(id))
+	deleteTask: (id: string) => request<TaskChanges>('DELETE', task(id)),
+
+	createCalendarLink: (input: { name: string; allLists?: boolean; listIds?: string[] }) =>
+		request<{ calendarLink: SerializedCalendarLink }>(
+			'POST',
+			resolve('/api/calendar-links'),
+			input
+		),
+	updateCalendarLink: (
+		id: string,
+		patch: { name?: string; allLists?: boolean; listIds?: string[] }
+	) =>
+		request<{ calendarLink: SerializedCalendarLink }>(
+			'PATCH',
+			resolve('/api/calendar-links/[id]', { id }),
+			patch
+		),
+	deleteCalendarLink: (id: string) =>
+		request<void>('DELETE', resolve('/api/calendar-links/[id]', { id }))
 };
