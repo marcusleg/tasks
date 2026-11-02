@@ -4,7 +4,7 @@
 	"version": "0.0.1",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
 	"scripts": {
 		"dev": "vite dev",
@@ -39,7 +39,7 @@
 		"@sveltejs/kit": "^3.1.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@types/better-sqlite3": "^9.6.0",
-		"@types/node": "^24",
+		"@types/node": "^26.6.6",
 		"drizzle-kit": "^0.31.11",
 		"eslint": "^10.14.0",
 		"eslint-config-prettier": "^10.1.8",
