@@ -1,0 +1,164 @@
+/**
+ * Data access for Lists and per-User preferences. Every function takes a {@link UserScope} and
+ * filters by its User (README → "Data access: always scope by User"), so another User's id
+ * matches nothing.
+ */
+import { and, asc, desc, eq } from 'drizzle-orm';
+import { generateKeyBetween } from 'fractional-indexing';
+import { DEFAULT_LIST_NAME, parseListName, type List, type SortMode } from '#lib/domain/lists.js';
+import { isId, InvalidInputError } from '#lib/domain/validation.js';
+import { toList } from './db/mapping.js';
+import { lists, userPreferences } from './db/schema.js';
+import { ownedBy, type UserScope } from './scope.js';
+
+/** All of the User's Lists, in List order. */
+export function getLists(scope: UserScope): List[] {
+	return scope.db
+		.select()
+		.from(lists)
+		.where(ownedBy(lists.userId, scope))
+		.orderBy(asc(lists.position), asc(lists.id))
+		.all()
+		.map(toList);
+}
+
+/** One of the User's Lists, or `undefined` if it doesn't exist or belongs to someone else. */
+export function getList(scope: UserScope, id: string): List | undefined {
+	const row = scope.db
+		.select()
+		.from(lists)
+		.where(and(eq(lists.id, id), ownedBy(lists.userId, scope)))
+		.get();
+	return row && toList(row);
+}
+
+function lastPosition(scope: UserScope): string | null {
+	const row = scope.db
+		.select({ position: lists.position })
+		.from(lists)
+		.where(ownedBy(lists.userId, scope))
+		.orderBy(desc(lists.position))
+		.limit(1)
+		.get();
+	return row?.position ?? null;
+}
+
+export interface NewList {
+	/** Client-generated id (see `newId`), so an optimistic UI can use it right away. */
+	id?: string;
+	name: string;
+}
+
+/** Creates a List at the end of the User's List order. Throws `InvalidInputError`. */
+export function createList(scope: UserScope, input: NewList): List {
+	if (input.id !== undefined && !isId(input.id)) throw new InvalidInputError('Invalid id');
+	const row = scope.db
+		.insert(lists)
+		.values({
+			id: input.id,
+			userId: scope.userId,
+			name: parseListName(input.name),
+			position: generateKeyBetween(lastPosition(scope), null)
+		})
+		.returning()
+		.get();
+	return toList(row);
+}
+
+export interface ListPatch {
+	name?: string;
+	sortMode?: SortMode;
+	visible?: boolean;
+}
+
+/** Changes a List's fields; `undefined` if the List isn't the User's. Throws `InvalidInputError`. */
+export function updateList(scope: UserScope, id: string, patch: ListPatch): List | undefined {
+	const values: Partial<typeof lists.$inferInsert> = {};
+	if (patch.name !== undefined) values.name = parseListName(patch.name);
+	if (patch.sortMode !== undefined) values.sortMode = patch.sortMode;
+	if (patch.visible !== undefined) values.visible = patch.visible;
+	if (Object.keys(values).length === 0) return getList(scope, id);
+
+	const row = scope.db
+		.update(lists)
+		.set(values)
+		.where(and(eq(lists.id, id), ownedBy(lists.userId, scope)))
+		.returning()
+		.get();
+	return row && toList(row);
+}
+
+/** Deletes a List and, by cascade, all of its Tasks. Returns whether anything was deleted. */
+export function deleteList(scope: UserScope, id: string): boolean {
+	const deleted = scope.db
+		.delete(lists)
+		.where(and(eq(lists.id, id), ownedBy(lists.userId, scope)))
+		.returning({ id: lists.id })
+		.all();
+	return deleted.length > 0;
+}
+
+/**
+ * First-time setup for a User: creates their preferences and the "My Tasks" List. Idempotent:
+ * once the preferences row exists nothing happens, so a User who deletes every List isn't given
+ * a new "My Tasks". Returns whether the User was set up just now.
+ */
+export function ensureUserSetUp(scope: UserScope): boolean {
+	const existing = scope.db
+		.select({ userId: userPreferences.userId })
+		.from(userPreferences)
+		.where(ownedBy(userPreferences.userId, scope))
+		.get();
+	if (existing) return false;
+
+	return scope.db.transaction((tx) => {
+		const inserted = tx
+			.insert(userPreferences)
+			.values({ userId: scope.userId })
+			.onConflictDoNothing()
+			.returning()
+			.get();
+		if (!inserted) return false;
+
+		const hasList = tx
+			.select({ id: lists.id })
+			.from(lists)
+			.where(ownedBy(lists.userId, scope))
+			.limit(1)
+			.get();
+		if (!hasList) {
+			tx.insert(lists)
+				.values({
+					userId: scope.userId,
+					name: DEFAULT_LIST_NAME,
+					position: generateKeyBetween(null, null)
+				})
+				.run();
+		}
+		return true;
+	});
+}
+
+/** Remembers the List the User last looked at. Ignores Lists that aren't the User's. */
+export function setLastViewedList(scope: UserScope, listId: string): void {
+	if (!getList(scope, listId)) return;
+	scope.db
+		.insert(userPreferences)
+		.values({ userId: scope.userId, lastViewedListId: listId })
+		.onConflictDoUpdate({
+			target: userPreferences.userId,
+			set: { lastViewedListId: listId, updatedAt: new Date() }
+		})
+		.run();
+}
+
+/** The List to show at `/`: the last-viewed one if it still exists, else the first. */
+export function getStartList(scope: UserScope): List | undefined {
+	const prefs = scope.db
+		.select({ lastViewedListId: userPreferences.lastViewedListId })
+		.from(userPreferences)
+		.where(ownedBy(userPreferences.userId, scope))
+		.get();
+	const lastViewed = prefs?.lastViewedListId && getList(scope, prefs.lastViewedListId);
+	return lastViewed || getLists(scope)[0];
+}
