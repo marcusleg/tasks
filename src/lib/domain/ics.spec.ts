@@ -234,6 +234,12 @@ describe('a timed Due Date', () => {
 
 		expect(eventLines(ics)).toContain('DURATION:PT1M');
 	});
+
+	it.each([-1, 1.5, Number.NaN])('rejects a fixed length of %s minutes', (dueEventMinutes) => {
+		expect(() => buildCalendar({ calendarName: 'Home', tasks: [], now, dueEventMinutes })).toThrow(
+			RangeError
+		);
+	});
 });
 
 describe('a Task with both dates timed', () => {

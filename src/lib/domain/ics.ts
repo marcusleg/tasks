@@ -1,5 +1,34 @@
 /**
- * iCalendar (RFC 5545) generation for Calendar Links. Pure: no DB or HTTP.
+ * iCalendar (RFC 5545) generation for Calendar Links (see CONTEXT.md and ADR 0001). Pure: no DB or
+ * HTTP; the caller picks the Tasks and serves the result as `text/calendar; charset=utf-8`.
+ *
+ * Each {@link CalendarTask} becomes up to two VEVENTs, one per set date:
+ * - Planned: SUMMARY is the title. Date-only → all-day (`VALUE=DATE`, DTEND the next day); timed →
+ *   `TZID` wall-clock start and DTEND = start + Duration in elapsed time (DURATION instead when
+ *   that end is a repeated wall-clock time, which DTEND would read as the earlier instance).
+ * - Due: SUMMARY is `Due: <title>`. Date-only → all-day; timed → zero-length, as `DURATION:PT0S`.
+ *   RFC 5545 requires DTEND to be later than DTSTART, so DTEND = DTSTART would be invalid; a
+ *   DURATION also makes a fixed length a one-option change (`dueEventMinutes`, e.g. 1).
+ * - When both dates are the same day (date-only) or the same wall-clock time in the same zone,
+ *   only the Due event is published.
+ * - UID is `<id>-planned@tasks` / `<id>-due@tasks`, where id is the Recurrence's `seriesId` for a
+ *   series and the Task id otherwise; DTSTAMP is `now`. DESCRIPTION lists the List, the parent
+ *   (for a dated Subtask), the Task description, undated Subtasks as a ☐/☑ checklist and the deep
+ *   link, which is also the URL property.
+ *
+ * Recurring Tasks: the current Occurrence's events carry the RRULEs from `toRRules` (completion-
+ * anchored rules as their on-time projection), under the series UIDs, so a calendar replaces the
+ * series when an Occurrence is completed. A detached Occurrence (moved by "This Occurrence") is
+ * published as one-off events under its Task id, followed by the series from `nextOccurrence`
+ * (stepped from an on-time completion for completion-anchored rules), or alone when the
+ * Recurrence has ended.
+ *
+ * Subtasks: the caller lists undated Subtasks in their parent's `undatedSubtasks`, and passes each
+ * dated Subtask as a CalendarTask of its own with `parentTitle` set. Completed Tasks and
+ * recurring Subtasks of a Completed parent are left out by the caller.
+ *
+ * Formatting: CRLF line endings, TEXT escaping, and lines folded at 75 octets between code points.
+ * VTIMEZONEs: see `vtimezone.ts`.
  */
 import { Temporal } from 'temporal-polyfill';
 import { toZonedDateTime, type DueDate, type PlannedDate } from './dates';
@@ -273,10 +302,18 @@ function fold(line: string): string {
 	return physical.join('\r\n');
 }
 
+/**
+ * The Calendar Link's iCalendar document: a VEVENT for each Planned and Due Date of `tasks` (see
+ * the module comment), preceded by a VTIMEZONE for every zone they use.
+ */
 export function buildCalendar(input: BuildCalendarInput): string {
+	const dueEventMinutes = input.dueEventMinutes ?? 0;
+	if (!Number.isInteger(dueEventMinutes) || dueEventMinutes < 0) {
+		throw new RangeError(`dueEventMinutes must be a whole number ≥ 0, got ${dueEventMinutes}`);
+	}
 	const options: Options = {
 		now: input.now,
-		dueEventMinutes: input.dueEventMinutes ?? 0,
+		dueEventMinutes,
 		exactMonthEnd: input.exactMonthEnd ?? false,
 		zones: new Map()
 	};
@@ -288,7 +325,7 @@ export function buildCalendar(input: BuildCalendarInput): string {
 	const lines = [
 		'BEGIN:VCALENDAR',
 		'VERSION:2.0',
-		`PRODID:${input.prodId ?? DEFAULT_PRODID}`,
+		`PRODID:${text(input.prodId ?? DEFAULT_PRODID)}`,
 		'CALSCALE:GREGORIAN',
 		'METHOD:PUBLISH',
 		`X-WR-CALNAME:${text(input.calendarName)}`,
