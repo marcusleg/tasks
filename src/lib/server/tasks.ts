@@ -238,6 +238,9 @@ export function updateTask(
 	});
 }
 
+const COMPLETED_CANT_START_RECURRENCE =
+	'A Completed Task can’t get a Recurrence. Reopen the task first';
+
 /** The Recurrence columns a patch changes. */
 function recurrenceColumns(
 	scope: UserScope,
@@ -249,6 +252,8 @@ function recurrenceColumns(
 	if (recurs && !hasDate(dates)) throw new InvalidInputError(NEEDS_A_DATE);
 	if (patch.recurrence === undefined) return {};
 	if (patch.recurrence === null) return { recurrence: null, seriesId: null };
+	// The next Occurrence is created on completion, so a Completed Task can't start a series.
+	if (task.completedAt) throw new InvalidInputError(COMPLETED_CANT_START_RECURRENCE);
 	const conflict = recurrenceConflict(task, familyOf(scope, task));
 	if (conflict) throw new InvalidInputError(RECURRENCE_CONFLICT_MESSAGES[conflict]);
 	const rule = withDrivingDefaults(patch.recurrence, dates);
@@ -435,7 +440,8 @@ export function reopenTask(scope: UserScope, id: string): TaskChangeSet | undefi
  * another of the User's Lists, where its Subtasks follow it. Only the moved Task gets a new
  * position. `undefined` if the Task or the target List isn't the User's. Throws
  * `InvalidInputError` for a move the rules don't allow (one level deep, Recurrence, Completed
- * Tasks, unknown parent or neighbour).
+ * Tasks, unknown parent or neighbour). A move that changes anything marks the moved Task and its
+ * old and new parent as changed since generated (`markChanged`).
  */
 export function moveTask(scope: UserScope, id: string, move: TaskMove): TaskChangeSet | undefined {
 	const task = getTask(scope, id);
@@ -458,7 +464,18 @@ export function moveTask(scope: UserScope, id: string, move: TaskMove): TaskChan
 					.get()
 			)
 		);
-		return { upserted, deleted: [] };
+		const [moved] = changes;
+		const actuallyMoved =
+			moved.listId !== task.listId ||
+			moved.parentId !== task.parentId ||
+			moved.position !== task.position;
+		if (actuallyMoved) {
+			// The moved Task, and the parents it left and joined, count as changed by the User.
+			for (const changedId of new Set([task.id, task.parentId, moved.parentId])) {
+				upserted.push(...markChanged(scope, changedId));
+			}
+		}
+		return changeSet(upserted);
 	});
 }
 

@@ -563,7 +563,7 @@ describe('moveTask', () => {
 		}
 
 		expect(() => moveTask(alice, eggs.id, { listId: list.id, parentId: milk.id })).toThrow(
-			/can’t both recur/
+			/parent Task repeats/
 		);
 	});
 

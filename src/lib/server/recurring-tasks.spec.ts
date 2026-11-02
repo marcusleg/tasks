@@ -11,6 +11,7 @@ import {
 	deleteTask,
 	getListTasks,
 	getTask,
+	moveTask,
 	reopenTask,
 	updateTask
 } from './tasks';
@@ -58,6 +59,18 @@ describe('setting a Recurrence', () => {
 		});
 		expect(saved.seriesId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(saved.occurrencesSoFar).toBe(1);
+	});
+
+	it('refuses a Recurrence on a Completed Task', () => {
+		const { alice, list } = setUp();
+		const task = add(alice, list.id, 'Water plants');
+		updateTask(alice, task.id, { planned: dateOnly('2026-11-04') });
+		completeTask(alice, task.id);
+
+		expect(() => updateTask(alice, task.id, { recurrence: weekly })).toThrow(
+			'Reopen the task first'
+		);
+		expect(getTask(alice, task.id)?.recurrence).toBeNull();
 	});
 
 	it('needs at least one date, and keeps the last date of a recurring Task', () => {
@@ -366,5 +379,38 @@ describe('Reopen of an Occurrence', () => {
 		expect(changes.deleted).toContain(current.id);
 		expect(getTask(alice, first.id)?.completedAt).toBeNull();
 		expect(getTask(alice, first.id)?.recurrence).not.toBeNull();
+	});
+
+	it.each<
+		[
+			string,
+			(scope: UserScope, ids: { current: string; currentFern: string; listId: string }) => void
+		]
+	>([
+		[
+			'a move',
+			(scope, { current, listId }) => {
+				const other = add(scope, listId, 'Other');
+				moveTask(scope, current, { listId, parentId: null, after: other.id });
+			}
+		],
+		[
+			'a Subtask moved out',
+			(scope, { currentFern, listId }) => moveTask(scope, currentFern, { listId, parentId: null })
+		],
+		[
+			'a Subtask moved in',
+			(scope, { current, listId }) => {
+				const other = add(scope, listId, 'Cactus');
+				moveTask(scope, other.id, { listId, parentId: current });
+			}
+		]
+	])('after %s, brings the old one back as a one-off Task', (_, change) => {
+		const { alice, list } = setUp();
+		const { first, current, currentFern } = completedOnce(alice, list.id);
+		change(alice, { current: current.id, currentFern: currentFern.id, listId: list.id });
+
+		expect(reopenTask(alice, first.id)?.deleted).toEqual([]);
+		expect(getTask(alice, first.id)?.recurrence).toBeNull();
 	});
 });
