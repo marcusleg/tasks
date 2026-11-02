@@ -131,12 +131,14 @@ describe('toCalendarTasks', () => {
 	it('leaves out recurring Subtasks of a Completed parent', () => {
 		const { alice } = setUp();
 		const list = createList(alice, { name: 'L' });
-		const parent = add(alice, list.id, 'Parent', { due: day('2026-03-10'), completed: true });
+		const parent = add(alice, list.id, 'Parent', { due: day('2026-03-10') });
 		add(alice, list.id, 'Recurring sub', {
 			parentId: parent.id,
 			planned: day('2026-03-07'),
 			recurrence: weekly
 		});
+		// Completed parents can't get new Subtasks, so mark the parent Completed afterwards.
+		alice.db.update(tasks).set({ completedAt: new Date() }).where(eq(tasks.id, parent.id)).run();
 
 		expect(mapAll(alice, list.id)()).toEqual([]);
 	});

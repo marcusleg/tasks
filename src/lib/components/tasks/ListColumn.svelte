@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { CollapsedSubtasks } from '#lib/client/collapsed-subtasks.svelte.js';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
@@ -10,8 +11,9 @@
 	import TaskRow from './TaskRow.svelte';
 
 	/**
-	 * One List: header (name, menu), "Add a task", the open Tasks and the collapsed Completed
-	 * section. Reads and changes Tasks through the page's `TaskStore` and the List through the
+	 * One List: header (name, menu), "Add a task", the open Tasks with their open Subtasks indented
+	 * below (collapsible per parent), and the collapsed Completed section, where Completed Subtasks
+	 * of open parents are grouped under their parent's Title. Reads and changes Tasks through the page's `TaskStore` and the List through the
 	 * `ListStore`, so several columns can sit side by side (#10).
 	 */
 	type Props = {
@@ -27,7 +29,12 @@
 	const id = $props.id();
 
 	const open = $derived(tasks.openTasks(list.id));
-	const completed = $derived(tasks.completedTasks(list.id));
+	const completed = $derived(tasks.completedGroups(list.id));
+	const openSubtasks = (parentId: string) =>
+		tasks.subtasks(parentId).filter((subtask) => !subtask.completedAt);
+
+	const collapsed = new CollapsedSubtasks();
+	onMount(() => collapsed.load());
 
 	let renaming = $state(false);
 	let draftName = $state('');
@@ -64,7 +71,7 @@
 		if (await lists.remove(list.id)) onDeleted?.();
 	}
 
-	const completedCount = $derived(completed.length);
+	const completedCount = $derived(tasks.completedCount(list.id));
 	const completedNoun = $derived(completedCount === 1 ? 'task' : 'tasks');
 </script>
 
@@ -105,8 +112,45 @@
 	{#if open.length > 0}
 		<ul class="tasks" aria-label="Open tasks">
 			{#each open as task (task.id)}
-				<!-- #7 renders the Task's Subtasks below its row. -->
-				<TaskRow {task} />
+				{@const subtasks = openSubtasks(task.id)}
+				{#if subtasks.length > 0}
+					{@const all = tasks.subtasks(task.id).length}
+					{@const expanded = !collapsed.has(task.id)}
+					<TaskRow {task}>
+						{#snippet trailing()}
+							<button
+								type="button"
+								class="subtask-toggle"
+								aria-label="Subtasks of {task.title}"
+								aria-expanded={expanded}
+								aria-controls="{id}-subtasks-{task.id}"
+								title="{all - subtasks.length} of {all} subtasks completed"
+								onclick={() => collapsed.toggle(task.id)}
+							>
+								<span aria-hidden="true">{all - subtasks.length}/{all}</span>
+								<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+									<path
+										d="M6 9l6 6 6-6"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</button>
+						{/snippet}
+					</TaskRow>
+					<li class="subtask-group" hidden={!expanded}>
+						<ul id="{id}-subtasks-{task.id}" class="subtasks" aria-label="Subtasks of {task.title}">
+							{#each subtasks as subtask (subtask.id)}
+								<TaskRow task={subtask} />
+							{/each}
+						</ul>
+					</li>
+				{:else}
+					<TaskRow {task} />
+				{/if}
 			{/each}
 		</ul>
 	{:else}
@@ -129,8 +173,29 @@
 				Completed ({completedCount})
 			</summary>
 			<ul class="tasks" aria-label="Completed tasks">
-				{#each completed as task (task.id)}
-					<TaskRow {task} />
+				{#each completed as { parent, subtasks } (parent.id)}
+					{#if parent.completedAt}
+						<TaskRow task={parent} />
+						{#if subtasks.length > 0}
+							<li class="subtask-group">
+								<ul class="subtasks" aria-label="Subtasks of {parent.title}">
+									{#each subtasks as subtask (subtask.id)}
+										<TaskRow task={subtask} />
+									{/each}
+								</ul>
+							</li>
+						{/if}
+					{:else}
+						<!-- An open parent shows only its Title, labelling its Completed Subtasks. -->
+						<li class="subtask-group">
+							<p id="{id}-completed-{parent.id}" class="subtask-parent">{parent.title}</p>
+							<ul class="subtasks" aria-labelledby="{id}-completed-{parent.id}">
+								{#each subtasks as subtask (subtask.id)}
+									<TaskRow task={subtask} />
+								{/each}
+							</ul>
+						</li>
+					{/if}
 				{/each}
 			</ul>
 		</details>
@@ -177,6 +242,56 @@
 		margin: 0;
 		padding: 0;
 		list-style: none;
+	}
+
+	.subtasks {
+		margin: 0;
+		padding: 0 0 0 var(--space-6);
+		list-style: none;
+	}
+
+	.subtask-group[hidden] {
+		display: none;
+	}
+
+	.subtask-toggle {
+		display: flex;
+		flex: none;
+		align-items: center;
+		gap: var(--space-1);
+		height: 2.75rem;
+		padding: 0 var(--space-2);
+		margin-right: calc(-1 * var(--space-1));
+		background: none;
+		border: none;
+		border-radius: var(--radius-md);
+		color: var(--muted);
+		font-size: 0.8125rem;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.subtask-toggle:hover {
+		background: var(--surface-hover);
+		color: var(--fg);
+	}
+
+	.subtask-toggle svg {
+		transition: transform 0.15s ease;
+	}
+
+	.subtask-toggle[aria-expanded='false'] svg {
+		transform: rotate(-90deg);
+	}
+
+	.subtask-parent {
+		display: flex;
+		align-items: center;
+		min-height: 2.25rem;
+		padding: var(--space-1) var(--space-3) 0;
+		color: var(--muted);
+		font-size: 0.875rem;
+		font-weight: 600;
+		overflow-wrap: anywhere;
 	}
 
 	.empty {

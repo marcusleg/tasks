@@ -48,6 +48,22 @@ export async function listOption(page: Page, list: string, option: string): Prom
 	await column(page, list).getByRole('button', { name: option }).click();
 }
 
-/** Titles of the open Tasks of a List, top to bottom. */
+/** Titles of the open top-level Tasks of a List, top to bottom (Subtasks not included). */
 export const openTitles = (page: Page, list: string): Locator =>
-	column(page, list).getByRole('list', { name: 'Open tasks' }).getByRole('button');
+	column(page, list)
+		.getByRole('list', { name: 'Open tasks' })
+		.locator(':scope > li > .body > .open');
+
+/** Titles of the open Subtasks shown under a parent in a List, top to bottom. */
+export const subtaskTitles = (page: Page, list: string, parent: string): Locator =>
+	column(page, list)
+		.getByRole('list', { name: `Subtasks of ${parent}`, exact: true })
+		.getByRole('button');
+
+/** Adds a Subtask through the open detail panel's "Add subtask" field. */
+export async function addSubtask(page: Page, title: string): Promise<void> {
+	await saved(page, async () => {
+		await detailPanel(page).getByRole('textbox', { name: 'Add subtask' }).fill(title);
+		await page.keyboard.press('Enter');
+	});
+}

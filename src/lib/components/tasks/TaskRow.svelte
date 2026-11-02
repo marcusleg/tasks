@@ -11,9 +11,11 @@
 		 * Subtasks (#7) render after the row, in the List.
 		 */
 		meta?: Snippet<[SerializedTask]>;
+		/** At the end of the row, e.g. the toggle that collapses a parent's Subtasks. */
+		trailing?: Snippet;
 	};
 
-	let { task, meta }: Props = $props();
+	let { task, meta, trailing }: Props = $props();
 
 	const store = getTaskStore();
 	const completed = $derived(task.completedAt !== null);
@@ -54,6 +56,7 @@
 		{/if}
 		{@render meta?.(task)}
 	</div>
+	{@render trailing?.()}
 </li>
 
 <style>

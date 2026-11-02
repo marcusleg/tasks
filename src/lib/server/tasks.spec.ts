@@ -98,6 +98,28 @@ describe('createTask', () => {
 			createTask(alice, { listId: other.id, title: 'X', parentId: parent.id })
 		).toBeUndefined();
 	});
+
+	it('adds Subtasks at the bottom of their parent’s Subtasks', () => {
+		const { alice, list } = setUp();
+		const parent = add(alice, list.id, 'Party');
+
+		add(alice, list.id, 'Cake', parent.id);
+		add(alice, list.id, 'Candles', parent.id);
+		add(alice, list.id, 'Balloons', parent.id);
+		add(alice, list.id, 'Milk');
+
+		const subtasks = getListTasks(alice, list.id).filter((task) => task.parentId === parent.id);
+		expect(titles(subtasks)).toEqual(['Cake', 'Candles', 'Balloons']);
+		expect(open(alice, list.id)).toEqual(['Milk', 'Party']);
+	});
+
+	it('refuses an open Subtask under a Completed Task', () => {
+		const { alice, list } = setUp();
+		const parent = add(alice, list.id, 'Party');
+		completeTask(alice, parent.id);
+
+		expect(() => add(alice, list.id, 'Cake', parent.id)).toThrow(InvalidInputError);
+	});
 });
 
 describe('updateTask', () => {
@@ -170,6 +192,106 @@ describe('completeTask and reopenTask', () => {
 		completeTask(alice, task.id);
 		expect(reopenTask(bob, task.id)).toBeUndefined();
 		expect(getTask(alice, task.id)?.completedAt).not.toBeNull();
+	});
+});
+
+describe('Subtasks: completion cascade and Reopen', () => {
+	const NOW = new Date('2026-11-02T10:00:00Z');
+	const EARLIER = new Date('2026-11-01T10:00:00Z');
+
+	function party() {
+		const setup = setUp();
+		const { alice, list } = setup;
+		const parent = add(alice, list.id, 'Party');
+		const cake = add(alice, list.id, 'Cake', parent.id);
+		const candles = add(alice, list.id, 'Candles', parent.id);
+		const balloons = add(alice, list.id, 'Balloons', parent.id);
+		return { ...setup, parent, cake, candles, balloons };
+	}
+
+	const state = (scope: UserScope, id: string) => {
+		const task = getTask(scope, id);
+		return { completed: task?.completedAt != null, byCascade: task?.completedByCascade };
+	};
+
+	it('completing a parent completes its open Subtasks and returns every Task it changed', () => {
+		const { alice, parent, cake, candles, balloons } = party();
+		completeTask(alice, cake.id, EARLIER);
+
+		const changes = completeTask(alice, parent.id, NOW);
+
+		expect(changes?.upserted.map((task) => task.title).sort()).toEqual([
+			'Balloons',
+			'Candles',
+			'Party'
+		]);
+		expect(state(alice, parent.id)).toEqual({ completed: true, byCascade: false });
+		expect(state(alice, candles.id)).toEqual({ completed: true, byCascade: true });
+		expect(state(alice, balloons.id)).toEqual({ completed: true, byCascade: true });
+		expect(getTask(alice, cake.id)).toMatchObject({
+			completedAt: EARLIER,
+			completedByCascade: false
+		});
+	});
+
+	it('completing the last open Subtask leaves the parent open', () => {
+		const { alice, parent, cake, candles, balloons } = party();
+
+		completeTask(alice, cake.id);
+		completeTask(alice, candles.id);
+		const changes = completeTask(alice, balloons.id);
+
+		expect(changes?.upserted.map((task) => task.id)).toEqual([balloons.id]);
+		expect(state(alice, parent.id).completed).toBe(false);
+	});
+
+	it('reopening a parent reopens only the Subtasks its completion closed', () => {
+		const { alice, parent, cake, candles, balloons } = party();
+		completeTask(alice, cake.id, EARLIER);
+		completeTask(alice, parent.id, NOW);
+
+		const changes = reopenTask(alice, parent.id);
+
+		expect(changes?.upserted.map((task) => task.title).sort()).toEqual([
+			'Balloons',
+			'Candles',
+			'Party'
+		]);
+		expect(state(alice, parent.id)).toEqual({ completed: false, byCascade: false });
+		expect(state(alice, candles.id)).toEqual({ completed: false, byCascade: false });
+		expect(state(alice, balloons.id)).toEqual({ completed: false, byCascade: false });
+		expect(state(alice, cake.id)).toEqual({ completed: true, byCascade: false });
+	});
+
+	it('reopening a Subtask of a Completed parent reopens the parent but not the other Subtasks', () => {
+		const { alice, parent, cake, candles, balloons } = party();
+		completeTask(alice, parent.id, NOW);
+
+		const changes = reopenTask(alice, cake.id);
+
+		expect(changes?.upserted.map((task) => task.title).sort()).toEqual([
+			'Balloons',
+			'Cake',
+			'Candles',
+			'Party'
+		]);
+		expect(state(alice, cake.id).completed).toBe(false);
+		expect(state(alice, parent.id).completed).toBe(false);
+		expect(state(alice, candles.id)).toEqual({ completed: true, byCascade: false });
+		expect(state(alice, balloons.id)).toEqual({ completed: true, byCascade: false });
+
+		// Completing and reopening the parent again restores it as it was just before.
+		completeTask(alice, parent.id, NOW);
+		reopenTask(alice, parent.id);
+		expect(state(alice, cake.id).completed).toBe(false);
+		expect(state(alice, candles.id).completed).toBe(true);
+	});
+
+	it("never touches another User's Tasks", () => {
+		const { alice, bob, parent, cake } = party();
+
+		expect(completeTask(bob, parent.id)).toBeUndefined();
+		expect(state(alice, cake.id).completed).toBe(false);
 	});
 });
 

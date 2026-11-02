@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
+	import { openTask } from '#lib/client/task-panel.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import LinkifiedText from '#lib/components/LinkifiedText.svelte';
 	import {
@@ -7,11 +8,14 @@
 		MAX_TITLE_LENGTH,
 		type SerializedTask
 	} from '#lib/domain/tasks.js';
+	import AddTaskRow from './AddTaskRow.svelte';
+	import TaskRow from './TaskRow.svelte';
 
 	/**
 	 * The Task detail panel: a side panel on wide screens, a full-screen sheet on narrow ones.
 	 * Edits are saved as you type (debounced) and when a field loses focus. Render it inside
-	 * `{#key task.id}` so each Task starts with fresh drafts.
+	 * `{#key task.id}` so each Task starts with fresh drafts. A top-level Task lists its Subtasks
+	 * (with "Add subtask"); a Subtask links back to its parent.
 	 */
 	type Props = {
 		task: SerializedTask;
@@ -34,6 +38,9 @@
 	let saved = untrack(() => ({ title: task.title, description: task.description }));
 
 	const completed = $derived(task.completedAt !== null);
+	const parent = $derived(store.get(task.parentId));
+	const subtasks = $derived(task.parentId === null ? store.subtasks(task.id) : []);
+	const subtasksDone = $derived(subtasks.filter((subtask) => subtask.completedAt).length);
 
 	onMount(() => {
 		titleInput?.focus();
@@ -114,6 +121,23 @@
 <aside class="detail" aria-labelledby="{id}-heading">
 	<header>
 		<h2 id="{id}-heading" class="visually-hidden">Task details</h2>
+		{#if parent}
+			<nav class="breadcrumb" aria-label="Parent task">
+				<button type="button" onclick={() => openTask(parent.id)}>
+					<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+						<path
+							d="M15 6l-6 6 6 6"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+					<span class="breadcrumb-title">{parent.title}</span>
+				</button>
+			</nav>
+		{/if}
 		<button type="button" class="icon" aria-label="Close details" onclick={onClose}>
 			<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 				<path
@@ -182,7 +206,30 @@
 			{/if}
 		</div>
 
-		<!-- #8 (dates), #9 (Priority), #16 (Recurrence) and #7 (Subtasks) add their fields here. -->
+		<!-- #8 (dates), #9 (Priority) and #16 (Recurrence) add their fields here. -->
+
+		{#if task.parentId === null}
+			<section class="subtasks" aria-labelledby="{id}-subtasks">
+				<div class="label-row">
+					<h3 id="{id}-subtasks" class="label">Subtasks</h3>
+					{#if subtasks.length > 0}
+						<span class="count">{subtasksDone}/{subtasks.length}</span>
+					{/if}
+				</div>
+				{#if subtasks.length > 0}
+					<ul aria-labelledby="{id}-subtasks">
+						{#each subtasks as subtask (subtask.id)}
+							<TaskRow task={subtask} />
+						{/each}
+					</ul>
+				{/if}
+				{#if completed}
+					<p class="hint">Reopen the task to add subtasks.</p>
+				{:else}
+					<AddTaskRow listId={task.listId} parentId={task.id} label="Add subtask" />
+				{/if}
+			</section>
+		{/if}
 	</div>
 
 	<footer>
@@ -209,8 +256,67 @@
 
 	header {
 		display: flex;
-		justify-content: flex-end;
+		align-items: center;
+		gap: var(--space-2);
 		padding: var(--space-2);
+	}
+
+	header > .icon {
+		margin-left: auto;
+	}
+
+	.breadcrumb {
+		min-width: 0;
+		padding-left: var(--space-3);
+	}
+
+	.breadcrumb button {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		max-width: 100%;
+		min-height: 2.5rem;
+		padding: 0 var(--space-2) 0 var(--space-1);
+		background: none;
+		border: none;
+		border-radius: var(--radius-md);
+		color: var(--accent-purple);
+		font-size: 0.875rem;
+	}
+
+	.breadcrumb button:hover {
+		background: var(--surface-hover);
+	}
+
+	.breadcrumb svg {
+		flex: none;
+	}
+
+	.breadcrumb-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.subtasks ul {
+		margin: 0 calc(-1 * var(--space-3));
+		padding: 0;
+		list-style: none;
+	}
+
+	.subtasks :global(form) {
+		margin: 0 calc(-1 * var(--space-3));
+	}
+
+	.count {
+		color: var(--muted);
+		font-size: 0.8125rem;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.hint {
+		color: var(--muted);
+		font-size: 0.875rem;
 	}
 
 	.icon {

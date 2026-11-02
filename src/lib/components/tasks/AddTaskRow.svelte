@@ -2,8 +2,13 @@
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import { MAX_TITLE_LENGTH } from '#lib/domain/tasks.js';
 
-	/** "Add a task": Enter adds the Task at the top of the List and keeps the field ready for the next one. */
-	let { listId }: { listId: string } = $props();
+	/**
+	 * "Add a task": Enter adds the Task at the top of the List and keeps the field ready for the
+	 * next one. With `parentId` it adds Subtasks instead, at the bottom of the parent's Subtasks.
+	 */
+	type Props = { listId: string; parentId?: string | null; label?: string };
+
+	let { listId, parentId = null, label = 'Add a task' }: Props = $props();
 
 	const store = getTaskStore();
 	const id = $props.id();
@@ -12,7 +17,7 @@
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (!title.trim()) return;
-		store.add(listId, title);
+		store.add(listId, title, parentId);
 		title = '';
 	}
 
@@ -35,13 +40,13 @@
 				fill="none"
 			/>
 		</svg>
-		<span class="visually-hidden">Add a task</span>
+		<span class="visually-hidden">{label}</span>
 	</label>
 	<input
 		id="{id}-title"
 		bind:value={title}
 		{onkeydown}
-		placeholder="Add a task"
+		placeholder={label}
 		maxlength={MAX_TITLE_LENGTH}
 		autocomplete="off"
 		enterkeyhint="enter"
