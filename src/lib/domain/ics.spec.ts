@@ -1,5 +1,5 @@
 import ICAL from 'ical.js';
-import rrule from 'rrule';
+import { RRuleTemporal } from 'rrule-temporal';
 import { Temporal } from 'temporal-polyfill';
 import { describe, expect, it } from 'vitest';
 import {
@@ -19,7 +19,6 @@ import {
 	type RecurrenceRule
 } from './recurrence';
 
-const { rrulestr } = rrule;
 const now = Temporal.Instant.from('2026-11-02T08:30:15.123Z');
 
 /** The content lines of an iCalendar document, unfolded (RFC 5545 §3.1). */
@@ -878,15 +877,11 @@ describe('a monthly series on the 29th or 30th', () => {
 		const event = eventLines(ics);
 		expect(event).toContain('RRULE:FREQ=MONTHLY;BYMONTHDAY=28,29,30;BYSETPOS=-1');
 		// ical.js (as used by Thunderbird) wrongly expands this to the 28th of every month after
-		// the first, so check it with the rrule reference implementation instead (which doesn't
-		// read VALUE=DATE).
-		const expanded = rrulestr(
-			event
-				.filter((line) => /^(DTSTART|RRULE)/.test(line))
-				.map((line) => line.replace(';VALUE=DATE', ''))
-				.join('\n')
-		).all((_, i) => i < 3);
-		expect(expanded.map((date) => date.toISOString().slice(0, 10))).toEqual([
+		// the first, so check it with an RFC 5545 reference implementation instead.
+		const expanded = new RRuleTemporal({
+			rruleString: event.filter((line) => /^(DTSTART|RRULE)/.test(line)).join('\n')
+		}).all((_, i) => i < 3);
+		expect(expanded.map((date) => date.toPlainDate().toString())).toEqual([
 			'2027-01-30',
 			'2027-02-28',
 			'2027-03-30'
