@@ -297,3 +297,45 @@ export function deleteCompletedTasks(scope: UserScope, listId: string): TaskChan
 		return { upserted: [], deleted: [...new Set([...completed, ...subtasks])] };
 	});
 }
+
+export interface PriorityViewTasks {
+	/** The Priority View's Tasks: open Tasks and Subtasks with a Priority, in any List. */
+	tasks: Task[];
+	/**
+	 * What the rows and the detail panel need besides: the parents of those Subtasks (for the
+	 * breadcrumb) and all Subtasks of those that are top-level Tasks.
+	 */
+	related: Task[];
+}
+
+/** The open Tasks of the User that have a Priority, across all Lists (uses the partial index). */
+export function getPriorityViewTasks(scope: UserScope): PriorityViewTasks {
+	const matches = scope.db
+		.select()
+		.from(tasks)
+		.where(owned(scope, isNull(tasks.completedAt), isNotNull(tasks.priority)))
+		.orderBy(asc(tasks.position), asc(tasks.id))
+		.all()
+		.map(toTask);
+	const have = new Set(matches.map((task) => task.id));
+	const parentIds = [
+		...new Set(
+			matches.flatMap((task) => (task.parentId && !have.has(task.parentId) ? [task.parentId] : []))
+		)
+	];
+	const topLevelIds = matches.filter((task) => task.parentId === null).map((task) => task.id);
+	const related = (ids: string[], column: typeof tasks.id | typeof tasks.parentId) =>
+		ids.length === 0
+			? []
+			: scope.db
+					.select()
+					.from(tasks)
+					.where(owned(scope, inArray(column, ids)))
+					.all()
+					.map(toTask);
+	const extra = new Map<string, Task>();
+	for (const task of [...related(parentIds, tasks.id), ...related(topLevelIds, tasks.parentId)]) {
+		if (!have.has(task.id)) extra.set(task.id, task);
+	}
+	return { tasks: matches, related: [...extra.values()] };
+}

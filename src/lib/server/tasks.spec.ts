@@ -19,6 +19,7 @@ import {
 	deleteTask,
 	getListTasks,
 	getTask,
+	getPriorityViewTasks,
 	getTasksOfLists,
 	reopenTask,
 	updateTask
@@ -446,5 +447,49 @@ describe('Planned Date, Due Date and Priority', () => {
 		updateTask(alice, task.id, { priority: 'low' });
 
 		expect(getTask(alice, task.id)?.changedSinceGenerated).toBe(true);
+	});
+});
+
+describe('getPriorityViewTasks', () => {
+	it("returns only the User's open Tasks and Subtasks with a Priority, across Lists", () => {
+		const { alice, bob, list } = setUp();
+		const other = createList(alice, { name: 'Work' });
+		const high = add(alice, list.id, 'High one');
+		const unprioritized = add(alice, other.id, 'Plain');
+		const done = add(alice, list.id, 'Done one');
+		const parent = add(alice, other.id, 'Parent');
+		const child = add(alice, other.id, 'Child', parent.id);
+		const sibling = add(alice, other.id, 'Sibling', parent.id);
+		const bobsList = createList(bob, { name: 'Bob' });
+		const bobs = add(bob, bobsList.id, 'Bobs');
+		updateTask(alice, high.id, { priority: 'high' });
+		updateTask(alice, done.id, { priority: 'low' });
+		completeTask(alice, done.id);
+		updateTask(alice, child.id, { priority: 'medium' });
+		updateTask(bob, bobs.id, { priority: 'high' });
+
+		const view = getPriorityViewTasks(alice);
+
+		expect(titles(view.tasks).sort()).toEqual(['Child', 'High one']);
+		expect(titles(view.related).sort()).toEqual(['Parent']);
+		const ids = [...view.tasks, ...view.related].map((task) => task.id);
+		expect(ids).not.toContain(unprioritized.id);
+		expect(ids).not.toContain(done.id);
+		expect(ids).not.toContain(bobs.id);
+		expect(ids).not.toContain(sibling.id);
+		expect(view.tasks.find((task) => task.id === child.id)?.parentId).toBe(parent.id);
+		expect(getPriorityViewTasks(bob).tasks.map((task) => task.id)).toEqual([bobs.id]);
+	});
+
+	it('also returns the Subtasks of a prioritized top-level Task', () => {
+		const { alice, list } = setUp();
+		const parent = add(alice, list.id, 'Parent');
+		add(alice, list.id, 'Child', parent.id);
+		updateTask(alice, parent.id, { priority: 'low' });
+
+		const view = getPriorityViewTasks(alice);
+
+		expect(titles(view.tasks)).toEqual(['Parent']);
+		expect(titles(view.related)).toEqual(['Child']);
 	});
 });
