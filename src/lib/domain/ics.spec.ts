@@ -550,7 +550,9 @@ describe('time zone definitions', () => {
 			const timezone = publishedZone(zone);
 
 			expect(mismatches(timezone, zone, zoneSamples(zone, 2037, 2070))).toEqual([]);
-		}
+		},
+		// Samples three decades of instants through ical.js; takes several seconds on slow CI runners.
+		30_000
 	);
 
 	it.each(['UTC', 'Asia/Kolkata', 'America/Sao_Paulo'])(
