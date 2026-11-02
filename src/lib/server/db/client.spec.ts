@@ -7,7 +7,11 @@ describe('database migrations', () => {
 		const db = openDatabase(':memory:');
 
 		migrateDatabase(db);
-		const [user] = db.insert(users).values({}).returning().all();
+		const [user] = db
+			.insert(users)
+			.values({ issuer: 'https://id.example.com', subject: 'abc', name: 'Alice' })
+			.returning()
+			.all();
 
 		expect(user.id).toMatch(/^[0-9a-f-]{36}$/);
 		expect(user.createdAt).toBeInstanceOf(Date);
