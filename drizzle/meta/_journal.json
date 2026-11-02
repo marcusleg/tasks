@@ -15,6 +15,13 @@
       "when": 1793570690931,
       "tag": "0001_users_and_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793580977314,
+      "tag": "0002_lists_tasks_calendar_links",
+      "breakpoints": true
     }
   ]
 }
