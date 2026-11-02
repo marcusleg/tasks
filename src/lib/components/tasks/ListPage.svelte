@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getListStore } from '#lib/client/lists.svelte.js';
+	import { setTaskDrag, TaskDrag } from '#lib/client/task-drag.svelte.js';
 	import { closeTask, openTaskId } from '#lib/client/task-panel.js';
 	import { setTaskStore, TaskStore } from '#lib/client/tasks.svelte.js';
 	import { getToasts } from '#lib/client/toasts.svelte.js';
@@ -26,6 +27,8 @@
 
 	const store = setTaskStore(new TaskStore(() => tasks, getToasts()));
 	const lists = getListStore();
+	// The columns scroll sideways inside <main> (AppShell).
+	const drag = setTaskDrag(new TaskDrag(store, lists, () => document.getElementById('main')));
 
 	// The Lists as edited in this browser (renamed, hidden, reordered), falling back to the page data.
 	const columns = $derived(lists.all.filter((list) => list.visible || list.id === focus.id));
@@ -101,6 +104,44 @@
 	{/each}
 </div>
 
+<p id="task-move-hint" class="visually-hidden">
+	Drag to move the task; drag right to make it a subtask, left to take it out. Or press Arrow Up or
+	Arrow Down to move it, Arrow Right to make it a subtask of the task above, Arrow Left to take it
+	out of its parent.
+</p>
+<p class="visually-hidden" role="status" aria-live="polite">{drag.announcement}</p>
+
+{#if drag.active}
+	{@const active = drag.active}
+	{#if active.indicator}
+		<div
+			class="drop-indicator"
+			class:invalid={active.invalid}
+			style:top="{active.indicator.top - 1}px"
+			style:left="{active.indicator.left}px"
+			style:width="{active.indicator.width}px"
+			aria-hidden="true"
+		></div>
+	{/if}
+	<div
+		class="drag-ghost"
+		class:invalid={active.invalid}
+		style:transform="translate({active.x + 16}px, {active.y + 12}px)"
+		aria-hidden="true"
+	>
+		<span class="ghost-title">{active.title}</span>
+		{#if active.invalid}
+			<span class="not-allowed">
+				<svg viewBox="0 0 24 24" width="16" height="16">
+					<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+					<path d="M5.6 5.6l12.8 12.8" stroke="currentColor" stroke-width="2" />
+				</svg>
+				Not allowed: {active.invalid}
+			</span>
+		{/if}
+	</div>
+{/if}
+
 {#if selected}
 	{#key selected.id}
 		<TaskDetail task={selected} onClose={close} />
@@ -108,6 +149,80 @@
 {/if}
 
 <style>
+	/* Above the dragged copy, so the line always shows where the Task will land. */
+	.drop-indicator {
+		position: fixed;
+		z-index: 61;
+		height: 2px;
+		background: var(--accent-purple);
+		border-radius: 1px;
+		pointer-events: none;
+	}
+
+	.drop-indicator::before {
+		content: '';
+		position: absolute;
+		top: -3px;
+		left: -4px;
+		width: 8px;
+		height: 8px;
+		border: 2px solid var(--accent-purple);
+		border-radius: 50%;
+		background: var(--bg);
+		box-sizing: border-box;
+	}
+
+	.drop-indicator.invalid {
+		background: repeating-linear-gradient(90deg, var(--accent-pink) 0 6px, transparent 6px 10px);
+	}
+
+	.drop-indicator.invalid::before {
+		border-color: var(--accent-pink);
+	}
+
+	.drag-ghost {
+		position: fixed;
+		top: 0;
+		left: 0;
+		z-index: 60;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		max-width: 20rem;
+		padding: var(--space-2) var(--space-3);
+		background: var(--bg);
+		border: 1px solid var(--accent-purple);
+		border-radius: var(--radius-md);
+		box-shadow: 0 6px 18px var(--overlay);
+		pointer-events: none;
+		opacity: 0.95;
+	}
+
+	.drag-ghost.invalid {
+		border-color: var(--accent-pink);
+	}
+
+	.ghost-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.not-allowed {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		color: var(--accent-pink);
+		font-size: 0.8125rem;
+		font-weight: 700;
+	}
+
+	:global(html.task-dragging),
+	:global(html.task-dragging *) {
+		cursor: grabbing !important;
+		user-select: none;
+	}
+
 	.switcher {
 		display: none;
 		margin-bottom: var(--space-3);

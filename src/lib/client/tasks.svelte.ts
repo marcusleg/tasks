@@ -26,6 +26,7 @@ import {
 	type CompletedGroup,
 	type CompletionChange
 } from '#lib/domain/subtasks.js';
+import { moveChanges, moveError, stepMove, type Step, type TaskMove } from '#lib/domain/moves.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
 import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
 import { api, type TaskPatch } from './api.js';
@@ -188,6 +189,39 @@ export class TaskStore {
 			deleted: [id, ...this.all.filter((task) => task.parentId === id).map((task) => task.id)]
 		});
 		return this.#send('delete the task', () => api.deleteTask(id));
+	}
+
+	/** Why Task `id` can't make `move` (see `moveError`), or `null` if it can. */
+	moveError(id: string, move: TaskMove): string | null {
+		return moveError(Object.values(this.#tasks), id, move);
+	}
+
+	/** The move that takes a Task one step from the keyboard, or `null` (see `stepMove`). */
+	stepMove(id: string, step: Step): TaskMove | null {
+		return stepMove(Object.values(this.#tasks), id, step);
+	}
+
+	/**
+	 * Moves a Task in Custom Order: among its siblings, under another Task, out of its parent, or
+	 * to another List with its Subtasks (the rules in `#lib/domain/moves`). A move the rules don't
+	 * allow is refused without a request and resolves to `false`; a move to where the Task already
+	 * is sends nothing.
+	 */
+	move(id: string, move: TaskMove): Promise<boolean> {
+		const all = Object.values(this.#tasks);
+		if (moveError(all, id, move)) return Promise.resolve(false);
+		const changes = moveChanges(all, id, move);
+		const task = this.#tasks[id];
+		const unchanged =
+			changes.length === 1 &&
+			changes[0].listId === task.listId &&
+			changes[0].parentId === task.parentId &&
+			changes[0].position === task.position;
+		if (unchanged) return Promise.resolve(true);
+		const next = { ...this.#tasks };
+		for (const { id: changed, ...patch } of changes) next[changed] = { ...next[changed], ...patch };
+		this.#tasks = next;
+		return this.#send('move the task', () => api.moveTask(id, move));
 	}
 
 	/** "Delete all completed" for one List. */

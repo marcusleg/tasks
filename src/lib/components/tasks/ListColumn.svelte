@@ -33,6 +33,9 @@
 	const openSubtasks = (parentId: string) =>
 		tasks.subtasks(parentId).filter((subtask) => !subtask.completedAt);
 
+	// Drag-and-drop (#11) only rearranges Custom Order, so only while the List shows it.
+	const reorderable = $derived(list.sortMode === 'custom');
+
 	const collapsed = new CollapsedSubtasks();
 	onMount(() => collapsed.load());
 
@@ -110,13 +113,13 @@
 	<AddTaskRow listId={list.id} />
 
 	{#if open.length > 0}
-		<ul class="tasks" aria-label="Open tasks">
+		<ul class="tasks" aria-label="Open tasks" data-open-tasks>
 			{#each open as task (task.id)}
 				{@const subtasks = openSubtasks(task.id)}
 				{#if subtasks.length > 0}
 					{@const all = tasks.subtasks(task.id).length}
 					{@const expanded = !collapsed.has(task.id)}
-					<TaskRow {task}>
+					<TaskRow {task} {reorderable}>
 						{#snippet trailing()}
 							<button
 								type="button"
@@ -142,19 +145,26 @@
 						{/snippet}
 					</TaskRow>
 					<li class="subtask-group" hidden={!expanded}>
-						<ul id="{id}-subtasks-{task.id}" class="subtasks" aria-label="Subtasks of {task.title}">
+						<ul
+							id="{id}-subtasks-{task.id}"
+							class="subtasks"
+							aria-label="Subtasks of {task.title}"
+							data-subtasks-of={task.id}
+						>
 							{#each subtasks as subtask (subtask.id)}
-								<TaskRow task={subtask} />
+								<TaskRow task={subtask} {reorderable} />
 							{/each}
 						</ul>
 					</li>
 				{:else}
-					<TaskRow {task} />
+					<TaskRow {task} {reorderable} />
 				{/if}
 			{/each}
 		</ul>
 	{:else}
-		<p class="empty">{completedCount > 0 ? 'All tasks completed' : 'No tasks yet'}</p>
+		<p class="empty" data-drop-empty>
+			{completedCount > 0 ? 'All tasks completed' : 'No tasks yet'}
+		</p>
 	{/if}
 
 	{#if completedCount > 0}
