@@ -11,6 +11,7 @@
 		"prettier.config.js",
 		"eslint.config.js",
 		"playwright.config.ts",
+		"playwright.screenshots.config.ts",
 		"drizzle.config.ts"
 	]
 }
