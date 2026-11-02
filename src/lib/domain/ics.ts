@@ -18,10 +18,10 @@
  *
  * Recurring Tasks: the current Occurrence's events carry the RRULEs from `toRRules` (completion-
  * anchored rules as their on-time projection), under the series UIDs, so a calendar replaces the
- * series when an Occurrence is completed. A detached Occurrence (moved by "This Occurrence") is
- * published as one-off events under its Task id, followed by the series from `nextOccurrence`
- * (stepped from an on-time completion for completion-anchored rules), or alone when the
- * Recurrence has ended.
+ * series when an Occurrence is completed. A detached Occurrence (changed by "This Occurrence") is
+ * published as one-off events under its Task id, followed by the series from `nextOccurrence` of
+ * its template (stepped from an on-time completion for completion-anchored rules), with the
+ * template's Title and Description, or alone when the Recurrence has ended.
  *
  * Subtasks: the caller lists undated Subtasks in their parent's `undatedSubtasks`, and passes each
  * dated Subtask as a CalendarTask of its own with `parentTitle` set. Completed Tasks and
@@ -75,6 +75,12 @@ export type CalendarRecurrence = {
 	 * Occurrence on (RFC 5545 leaves a DTSTART that doesn't match the rule undefined).
 	 */
 	detached?: boolean;
+	/**
+	 * What the series makes of this Occurrence (its series template), when that differs from the
+	 * Task: a detached Occurrence's series is stepped from these dates and carries this Title and
+	 * Description. Defaults to the Task's own.
+	 */
+	template?: OccurrenceDates & { title: string; description: string };
 };
 
 export type BuildCalendarInput = {
@@ -194,15 +200,14 @@ function withoutSetPos(rrule: string): string {
 	return rrule.replace(/BYMONTHDAY=28(?:,(\d+))+;BYSETPOS=-1/, 'BYMONTHDAY=$1');
 }
 
-/** The events of one Occurrence, or of a series starting at it when `rrules` is given. */
-type Publication = { uidBase: string; dates: OccurrenceDates; rrules?: RRules };
+/**
+ * The events of one Occurrence, or of a series starting at it when `rrules` is given; `task`
+ * supplies the Title and Description.
+ */
+type Publication = { uidBase: string; dates: OccurrenceDates; rrules?: RRules; task: CalendarTask };
 
-function event(
-	task: CalendarTask,
-	kind: EventKind,
-	publication: Publication,
-	options: Options
-): string[] {
+function event(kind: EventKind, publication: Publication, options: Options): string[] {
+	const { task } = publication;
 	const times = timing(kind, publication.dates[kind], options);
 	if (!times) return [];
 	const exactRrule = publication.rrules?.[kind];
@@ -240,35 +245,48 @@ function onTimeCompletion(dates: OccurrenceDates): Temporal.ZonedDateTime {
 	throw new Error('A recurring Task needs at least one date');
 }
 
-function series(uidBase: string, dates: OccurrenceDates, recurrence: CalendarRecurrence) {
+function series(
+	task: CalendarTask,
+	uidBase: string,
+	dates: OccurrenceDates,
+	recurrence: CalendarRecurrence
+): Publication {
 	const { rule, occurrencesSoFar } = recurrence;
-	return { uidBase, dates, rrules: toRRules(rule, { ...dates, occurrencesSoFar }) };
+	return { task, uidBase, dates, rrules: toRRules(rule, { ...dates, occurrencesSoFar }) };
 }
 
 function publications(task: CalendarTask): Publication[] {
 	const dates: OccurrenceDates = { planned: task.planned, due: task.due };
 	const { recurrence } = task;
 	if (!recurrence || (dates.planned.kind === 'unset' && dates.due.kind === 'unset')) {
-		return [{ uidBase: task.id, dates }];
+		return [{ task, uidBase: task.id, dates }];
 	}
-	if (!recurrence.detached) return [series(recurrence.seriesId, dates, recurrence)];
-	// Completion-anchored rules are projected from an on-time completion, as toRRules does.
+	if (!recurrence.detached) return [series(task, recurrence.seriesId, dates, recurrence)];
+	// The series goes on from where the template is, not from the moved Occurrence; completion-
+	// anchored rules are projected from completing this Occurrence on time, as toRRules does.
+	const { template } = recurrence;
 	const next = nextOccurrence({
-		...dates,
+		...(template ?? dates),
 		rule: recurrence.rule,
 		occurrencesSoFar: recurrence.occurrencesSoFar,
 		completedAt: onTimeCompletion(dates)
 	});
-	const single: Publication = { uidBase: task.id, dates };
+	const single: Publication = { task, uidBase: task.id, dates };
 	if (!next) return [single];
+	const seriesTask = template
+		? { ...task, title: template.title, description: template.description }
+		: task;
 	const occurrencesSoFar = recurrence.occurrencesSoFar + 1;
-	return [single, series(recurrence.seriesId, next, { ...recurrence, occurrencesSoFar })];
+	return [
+		single,
+		series(seriesTask, recurrence.seriesId, next, { ...recurrence, occurrencesSoFar })
+	];
 }
 
 function taskEvents(task: CalendarTask, options: Options): string[] {
 	return publications(task).flatMap((publication) => [
-		...(sameDate(publication.dates) ? [] : event(task, 'planned', publication, options)),
-		...event(task, 'due', publication, options)
+		...(sameDate(publication.dates) ? [] : event('planned', publication, options)),
+		...event('due', publication, options)
 	]);
 }
 

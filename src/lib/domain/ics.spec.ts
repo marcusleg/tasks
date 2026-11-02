@@ -810,6 +810,44 @@ describe('an Occurrence moved off its Recurrence ("This Occurrence")', () => {
 	});
 });
 
+describe('a detached Occurrence with a series template', () => {
+	// Weekly on Mondays at 09:00; this week's Occurrence moved to Tuesday 14:00 and renamed.
+	const weekly = rule({ frequency: 'weekly', weekdays: [1] });
+	const detached = task({
+		id: 'occurrence-2',
+		title: 'Water the ferns',
+		planned: timedPlannedDate('2026-11-03T14:00', 'Europe/Berlin'),
+		recurrence: {
+			seriesId: 'series-1',
+			rule: weekly,
+			occurrencesSoFar: 2,
+			detached: true,
+			template: {
+				title: 'Water the plants',
+				description: 'All of them',
+				planned: timedPlannedDate('2026-11-02T09:00', 'Europe/Berlin'),
+				due: unsetDate
+			}
+		}
+	});
+
+	it('publishes the Occurrence as it is, on its own', () => {
+		const event = eventByUid(calendarOf(detached), 'occurrence-2-planned@tasks');
+
+		expect(event.getFirstPropertyValue('dtstart')?.toString()).toBe('2026-11-03T14:00:00');
+		expect(event.getFirstPropertyValue('summary')).toBe('Water the ferns');
+		expect(event.hasProperty('rrule')).toBe(false);
+	});
+
+	it('steps the series from the template’s dates, with its Title and Description', () => {
+		const series = eventByUid(calendarOf(detached), 'series-1-planned@tasks');
+
+		expect(expand(series, 2)).toEqual(['2026-11-09T08:00:00Z', '2026-11-16T08:00:00Z']);
+		expect(series.getFirstPropertyValue('summary')).toBe('Water the plants');
+		expect(series.getFirstPropertyValue('description')).toContain('All of them');
+	});
+});
+
 describe('a monthly series on the 29th or 30th', () => {
 	const monthly30 = task({
 		planned: dateOnly('2027-01-30'),
