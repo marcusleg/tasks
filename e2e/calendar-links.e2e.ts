@@ -39,8 +39,8 @@ test('create, copy, fetch, edit and delete a Calendar Link', async ({ page, cont
 	await expect(page).toHaveURL(/\/settings$/);
 	await expect(page.getByText('No Calendar Links yet')).toBeVisible();
 
-	await createLink(page, 'Proton');
-	const card = page.getByRole('article', { name: 'Proton' });
+	await createLink(page, 'Phone');
+	const card = page.getByRole('article', { name: 'Phone' });
 	await expect(card.getByText('All Lists')).toBeVisible();
 	await expect(card.getByText('never')).toBeVisible();
 
@@ -52,7 +52,7 @@ test('create, copy, fetch, edit and delete a Calendar Link', async ({ page, cont
 	const response = await request.get(url);
 	expect(response.status()).toBe(200);
 	expect(response.headers()['content-type']).toBe('text/calendar; charset=utf-8');
-	expect(response.headers()['content-disposition']).toContain('proton.ics');
+	expect(response.headers()['content-disposition']).toContain('phone.ics');
 	const body = await response.text();
 	expect(body).toContain('BEGIN:VCALENDAR');
 	expect(body).toContain(`SUMMARY:${title}`);

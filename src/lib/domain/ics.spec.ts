@@ -860,7 +860,7 @@ describe('a monthly series on the 29th or 30th', () => {
 		}
 	});
 
-	it('uses a single BYMONTHDAY by default, which Proton accepts, skipping February', () => {
+	it('uses a single BYMONTHDAY by default, the widely supported form, skipping February', () => {
 		const ics = calendarOf(monthly30);
 
 		expect(eventLines(ics)).toContain('RRULE:FREQ=MONTHLY;BYMONTHDAY=30');

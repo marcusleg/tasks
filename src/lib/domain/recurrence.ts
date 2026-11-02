@@ -355,7 +355,7 @@ function formatUntil(lastDate: Temporal.PlainDate, value: DateOnly | TimedDate):
  * - Month end: RFC 5545 skips months without the given day, while the app clamps. Clamped series
  *   are exported as `BYMONTHDAY=-1` (31st) or `BYMONTHDAY=28,…,N;BYSETPOS=-1` (29th/30th), and
  *   Feb 29 yearly as `BYMONTH=2;BYMONTHDAY=-1`, so calendars show the same dates as the app.
- *   Proton Calendar is known to reject multi-value BYMONTHDAY with BYSETPOS; `-1` is accepted.
+ *   Some calendar apps reject multi-value BYMONTHDAY with BYSETPOS; `-1` is widely accepted.
  * - The later date's series is the driving series shifted by whole days: weekly BYDAY and WKST are
  *   shifted exactly. A monthly or yearly series that no single BYMONTHDAY pattern can express
  *   (e.g. due 11 days after the 25th: the 5th to the 8th) falls back to its own current day and

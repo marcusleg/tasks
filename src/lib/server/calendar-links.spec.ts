@@ -33,12 +33,12 @@ describe('generateToken', () => {
 describe('createCalendarLink', () => {
 	it('covers All Lists by default and generates a unique token', () => {
 		const { alice } = setUp();
-		const a = createCalendarLink(alice, { name: ' Proton ' });
+		const a = createCalendarLink(alice, { name: ' Phone ' });
 		const b = createCalendarLink(alice, { name: 'Other' });
 
-		expect(a).toMatchObject({ name: 'Proton', allLists: true, listIds: [], lastAccessedAt: null });
+		expect(a).toMatchObject({ name: 'Phone', allLists: true, listIds: [], lastAccessedAt: null });
 		expect(a.token).not.toBe(b.token);
-		expect(getCalendarLinks(alice).map((l) => l.name)).toEqual(['Proton', 'Other']);
+		expect(getCalendarLinks(alice).map((l) => l.name)).toEqual(['Phone', 'Other']);
 	});
 
 	it('requires a name', () => {

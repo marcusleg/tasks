@@ -98,7 +98,7 @@ export type BuildCalendarInput = {
 	/**
 	 * Publish monthly series on the 29th or 30th with the exact RFC 5545 rule
 	 * (`BYMONTHDAY=28,29[,30];BYSETPOS=-1`), which clamps to short months like the app. Off by
-	 * default: Proton Calendar rejects multi-value BYMONTHDAY and ical.js (Thunderbird) misexpands
+	 * default: some calendar apps reject multi-value BYMONTHDAY and ical.js (Thunderbird) misexpands
 	 * it, so a single `BYMONTHDAY=29`/`30` is published instead, skipping months without that day.
 	 */
 	exactMonthEnd?: boolean;
