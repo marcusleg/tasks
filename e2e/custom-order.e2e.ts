@@ -254,3 +254,17 @@ test('the move endpoint validates its input', async ({ page }) => {
 	).toBe(404);
 	expect((await move({ listId: milk.listId, parentId: null })).status()).toBe(200);
 });
+
+test('the Priority View has no drag handles (it has no Custom Order)', async ({ page }) => {
+	await addTasks(page, 'Milk');
+	await expect(handle(page, 'Milk')).toHaveCount(1);
+	const milk = page.locator('li[data-task-id]', {
+		has: page.getByRole('button', { name: 'Milk', exact: true })
+	});
+	await milk.getByRole('button', { name: 'Priority: None' }).click();
+	await saved(page, () => milk.getByRole('button', { name: 'High', exact: true }).click());
+
+	await page.goto('/priority');
+	await expect(page.getByRole('button', { name: 'Milk', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Move task' })).toHaveCount(0);
+});
