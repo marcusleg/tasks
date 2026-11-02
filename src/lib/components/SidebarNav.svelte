@@ -163,13 +163,30 @@
 							/>
 						</svg>
 					</button>
-					<input
-						type="checkbox"
-						aria-label="Show {list.name}"
-						checked={list.visible}
-						disabled={!hydration.done}
-						onchange={(event) => toggle(list.id, event.currentTarget.checked)}
-					/>
+					<!-- An eye, not a checkmark: this shows or hides the List, it doesn't complete it. -->
+					<label class="visibility">
+						<input
+							type="checkbox"
+							aria-label="Show {list.name}"
+							checked={list.visible}
+							disabled={!hydration.done}
+							onchange={(event) => toggle(list.id, event.currentTarget.checked)}
+						/>
+						<svg
+							viewBox="0 0 24 24"
+							width="18"
+							height="18"
+							aria-hidden="true"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						>
+							<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+							<circle cx="12" cy="12" r="3" />
+							<path class="slash" d="M3 3l18 18" />
+						</svg>
+					</label>
 					<a
 						href={resolve('/lists/[id]', { id: list.id })}
 						aria-current={list.id === shownListId ? 'page' : undefined}
@@ -326,10 +343,31 @@
 		cursor: grabbing;
 	}
 
-	li > input[type='checkbox'] {
+	.visibility {
+		position: relative;
 		flex: none;
-		margin: 0 var(--space-1);
-		accent-color: var(--accent-purple);
+		display: grid;
+		place-items: center;
+		width: 2rem;
+		height: 2rem;
+		color: var(--muted);
+	}
+
+	/* The checkbox covers the icon to take the click, but isn't drawn. */
+	.visibility input {
+		appearance: none;
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		cursor: pointer;
+	}
+
+	.visibility input:checked + svg {
+		color: var(--accent-purple);
+	}
+
+	.visibility input:checked + svg .slash {
+		display: none;
 	}
 
 	a {
