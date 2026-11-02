@@ -30,7 +30,12 @@ test('create, rename and delete Lists', async ({ page }) => {
 	]);
 
 	await sidebar(page).getByRole('link', { name: 'Groceries' }).click();
-	await expect(page.getByRole('heading', { name: 'Groceries', level: 2 })).toBeVisible();
+	// Every List is a column already; wait until Groceries is the one the page is about.
+	await expect(
+		page
+			.locator('[data-column][data-focused]')
+			.getByRole('heading', { name: 'Groceries', level: 2 })
+	).toBeVisible();
 	await addTask(page, 'Milk');
 	await listOption(page, 'Groceries', 'Rename list');
 	const nameField = page.getByRole('textbox', { name: 'List name' });

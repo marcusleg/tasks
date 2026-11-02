@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { loginAs } from './auth';
-import { addTask, column, detailPanel, saved } from './lists-tasks';
+import { addSubtask, addTask, column, detailPanel, saved } from './lists-tasks';
 
 // Dates are shown in the browser's zone and locale; pin both so labels are predictable.
 test.use({ timezoneId: 'Europe/Berlin', locale: 'en-GB' });
@@ -164,6 +164,39 @@ test('set, change and clear Priority from the row and the detail panel', async (
 	await expect(task.getByRole('button', { name: 'Priority: None' })).toBeAttached();
 	await openTask(page, 'Pay rent');
 	await expect(priority.getByRole('radio', { name: 'None' })).toBeChecked();
+});
+
+test('Subtasks have dates and a Priority too, on their rows and in their panel', async ({
+	page
+}) => {
+	await addTask(page, 'Party');
+	await openTask(page, 'Party');
+	await addSubtask(page, 'Cake');
+	await detailPanel(page)
+		.getByRole('list', { name: 'Subtasks' })
+		.getByRole('button', { name: 'Cake', exact: true })
+		.click();
+	await expect(detailPanel(page).getByRole('textbox', { name: 'Title' })).toHaveValue('Cake');
+
+	await saved(page, () =>
+		dateGroup(page, 'Due date').getByRole('button', { name: 'Tomorrow' }).click()
+	);
+	await saved(page, () =>
+		detailPanel(page)
+			.getByRole('group', { name: 'Priority' })
+			.getByRole('radio', { name: 'High' })
+			.check()
+	);
+
+	const subtasks = column(page, 'My Tasks').getByRole('list', {
+		name: 'Subtasks of Party',
+		exact: true
+	});
+	await expect(subtasks).toContainText('Due Tomorrow');
+	await expect(subtasks.getByRole('button', { name: 'Priority: High' })).toBeVisible();
+	await page.reload();
+	await expect(subtasks).toContainText('Due Tomorrow');
+	await expect(subtasks.getByRole('button', { name: 'Priority: High' })).toBeVisible();
 });
 
 test('the API rejects malformed dates, zones and Priorities', async ({ page }) => {
