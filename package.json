@@ -19,6 +19,7 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:e2e": "playwright test",
+		"oidc:mock": "node e2e/oidc-mock.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio"
 	},
