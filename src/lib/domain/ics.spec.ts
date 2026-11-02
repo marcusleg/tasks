@@ -251,3 +251,140 @@ describe('a Task with both dates timed', () => {
 		expect(events(ics)).toHaveLength(2);
 	});
 });
+
+describe('the event description', () => {
+	const planned = dateOnly('2026-11-04');
+
+	function description(overrides: Partial<CalendarTask>): string {
+		return events(calendarOf(task({ planned, ...overrides })))[0].getFirstPropertyValue(
+			'description'
+		) as string;
+	}
+
+	it('names the List and links back to the Task', () => {
+		const ics = calendarOf(task({ planned }));
+
+		expect(description({})).toBe('List: Home\n\nhttps://tasks.example/lists/home/tasks/task-1');
+		expect(events(ics)[0].getFirstPropertyValue('url')).toBe(
+			'https://tasks.example/lists/home/tasks/task-1'
+		);
+	});
+
+	it('includes the Task description', () => {
+		expect(description({ description: 'Ficus twice,\ncactus once.' })).toBe(
+			'List: Home\n\nFicus twice,\ncactus once.\n\nhttps://tasks.example/lists/home/tasks/task-1'
+		);
+	});
+
+	it('lists undated Subtasks as a checklist', () => {
+		const undatedSubtasks = [
+			{ title: 'Fill the can', completed: true },
+			{ title: 'Ficus', completed: false }
+		];
+
+		expect(description({ undatedSubtasks })).toBe(
+			'List: Home\n\n☑ Fill the can\n☐ Ficus\n\nhttps://tasks.example/lists/home/tasks/task-1'
+		);
+	});
+
+	it('names the parent of a dated Subtask', () => {
+		expect(description({ title: 'Ficus', parentTitle: 'Water the plants' })).toBe(
+			'List: Home\nSubtask of: Water the plants\n\nhttps://tasks.example/lists/home/tasks/task-1'
+		);
+	});
+
+	it('is the same on the Due event', () => {
+		const ics = calendarOf(
+			task({ planned, due: dateOnly('2026-11-05'), description: 'Ficus twice.' })
+		);
+
+		const [plannedEvent, dueEvent] = events(ics);
+		expect(dueEvent.getFirstPropertyValue('description')).toBe(
+			plannedEvent.getFirstPropertyValue('description')
+		);
+	});
+});
+
+describe('text values', () => {
+	const planned = dateOnly('2026-11-04');
+
+	it('escape backslashes, semicolons, commas and newlines', () => {
+		const title = 'Buy soil, pots; and C:\\Plants\\list\r\nthen water';
+		const ics = calendarOf(task({ planned, title }));
+
+		expect(eventLines(ics)).toContain(
+			'SUMMARY:Buy soil\\, pots\\; and C:\\\\Plants\\\\list\\nthen water'
+		);
+		expect(events(ics)[0].getFirstPropertyValue('summary')).toBe(
+			'Buy soil, pots; and C:\\Plants\\list\nthen water'
+		);
+	});
+
+	it('round-trip in the calendar name, List name, description and checklist', () => {
+		const ics = buildCalendar({
+			calendarName: 'Home, garden; more',
+			now,
+			tasks: [
+				task({
+					planned,
+					listName: 'A;B',
+					description: 'one,\r\ntwo\\three',
+					undatedSubtasks: [{ title: 'x,y', completed: false }]
+				})
+			]
+		});
+
+		// ical.js leaves X- properties unescaped, so check the content line itself.
+		expect(lines(ics)).toContain('X-WR-CALNAME:Home\\, garden\\; more');
+		expect(events(ics)[0].getFirstPropertyValue('description')).toBe(
+			'List: A;B\n\none,\ntwo\\three\n\n☐ x,y\n\nhttps://tasks.example/lists/home/tasks/task-1'
+		);
+	});
+
+	it('drop control characters that RFC 5545 does not allow', () => {
+		const ics = calendarOf(task({ planned, title: 'Bell\u0007 and\ttab\u007f' }));
+
+		expect(events(ics)[0].getFirstPropertyValue('summary')).toBe('Bell and\ttab');
+	});
+});
+
+describe('long lines', () => {
+	/** The physical lines as UTF-8 bytes. */
+	function physicalLines(ics: string): Uint8Array[] {
+		const bytes = new TextEncoder().encode(ics);
+		const result: Uint8Array[] = [];
+		let start = 0;
+		for (let i = 0; i < bytes.length - 1; i++) {
+			if (bytes[i] === 0x0d && bytes[i + 1] === 0x0a) {
+				result.push(bytes.slice(start, i));
+				start = i + 2;
+			}
+		}
+		return result;
+	}
+
+	const title = 'Grüße an Jürgen 🌱🪴 schicken und Blumenerde für die Übertöpfe kaufen 🛒 '.repeat(
+		4
+	);
+	const ics = calendarOf(
+		task({ planned: dateOnly('2026-11-04'), title, description: 'Ä'.repeat(200) })
+	);
+
+	it('are folded to at most 75 octets without splitting a UTF-8 character', () => {
+		const decoder = new TextDecoder('utf-8', { fatal: true });
+		const physical = physicalLines(ics);
+
+		expect(physical.length).toBeGreaterThan(lines(ics).length);
+		for (const line of physical) {
+			expect(line.length).toBeLessThanOrEqual(75);
+			expect(() => decoder.decode(line)).not.toThrow();
+		}
+	});
+
+	it('unfold to the original text', () => {
+		const [event] = events(ics);
+
+		expect(event.getFirstPropertyValue('summary')).toBe(title);
+		expect(event.getFirstPropertyValue('description')).toContain('Ä'.repeat(200));
+	});
+});

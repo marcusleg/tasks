@@ -17,7 +17,10 @@ export type CalendarTask = {
 	url: string;
 	planned: PlannedDate;
 	due: DueDate;
+	/** Listed as a checklist in the description. */
 	undatedSubtasks: { title: string; completed: boolean }[];
+	/** The parent's title, for a dated Subtask (published as its own CalendarTask). */
+	parentTitle?: string;
 };
 
 export type BuildCalendarInput = {
@@ -45,6 +48,30 @@ function formatUtc(instant: Temporal.Instant): string {
 }
 
 type EventKind = 'planned' | 'due';
+
+/**
+ * Escapes a TEXT value (RFC 5545 §3.3.11): backslash, semicolon, comma and line breaks. Other
+ * control characters are not allowed in content lines (§3.1) and are dropped; tabs are kept.
+ */
+function text(value: string): string {
+	return (
+		value
+			.replace(/[\\;,]/g, (char) => `\\${char}`)
+			.replace(/\r\n?|\n/g, '\\n')
+			// eslint-disable-next-line no-control-regex
+			.replace(/[\x00-\x08\x0a-\x1f\x7f]/g, '')
+	);
+}
+
+function description(task: CalendarTask): string {
+	const header = [`List: ${task.listName}`];
+	if (task.parentTitle !== undefined) header.push(`Subtask of: ${task.parentTitle}`);
+	const checklist = task.undatedSubtasks.map(
+		(subtask) => `${subtask.completed ? '☑' : '☐'} ${subtask.title}`
+	);
+	const sections = [header.join('\n'), task.description.trim(), checklist.join('\n'), task.url];
+	return sections.filter((section) => section !== '').join('\n\n');
+}
 
 function formatLocal(dateTime: Temporal.PlainDateTime): string {
 	return dateTime.toString({ smallestUnit: 'second' }).replace(/[-:]/g, '');
@@ -96,7 +123,9 @@ function event(
 		`UID:${task.id}-${kind}@tasks`,
 		`DTSTAMP:${formatUtc(options.now)}`,
 		...times,
-		`SUMMARY:${kind === 'due' ? `Due: ${task.title}` : task.title}`,
+		`SUMMARY:${text(kind === 'due' ? `Due: ${task.title}` : task.title)}`,
+		`DESCRIPTION:${text(description(task))}`,
+		`URL:${task.url}`,
 		'END:VEVENT'
 	];
 }
@@ -117,6 +146,36 @@ function taskEvents(task: CalendarTask, options: Options): string[] {
 	return [...planned, ...event(task, 'due', task.due, options)];
 }
 
+const MAX_LINE_OCTETS = 75;
+
+function utf8Length(codePoint: number): number {
+	if (codePoint < 0x80) return 1;
+	if (codePoint < 0x800) return 2;
+	return codePoint < 0x10000 ? 3 : 4;
+}
+
+/**
+ * Folds a content line into physical lines of at most 75 octets (RFC 5545 §3.1), each continuation
+ * starting with a space. Splits only between code points, so no UTF-8 character is broken.
+ */
+function fold(line: string): string {
+	const physical: string[] = [];
+	let current = '';
+	let octets = 0;
+	for (const char of line) {
+		const size = utf8Length(char.codePointAt(0)!);
+		if (octets + size > MAX_LINE_OCTETS) {
+			physical.push(current);
+			current = ' ';
+			octets = 1;
+		}
+		current += char;
+		octets += size;
+	}
+	physical.push(current);
+	return physical.join('\r\n');
+}
+
 export function buildCalendar(input: BuildCalendarInput): string {
 	const options: Options = { now: input.now, dueEventMinutes: input.dueEventMinutes ?? 0 };
 	const lines = [
@@ -125,11 +184,11 @@ export function buildCalendar(input: BuildCalendarInput): string {
 		`PRODID:${input.prodId ?? DEFAULT_PRODID}`,
 		'CALSCALE:GREGORIAN',
 		'METHOD:PUBLISH',
-		`X-WR-CALNAME:${input.calendarName}`,
+		`X-WR-CALNAME:${text(input.calendarName)}`,
 		'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
 		'X-PUBLISHED-TTL:PT1H',
 		...input.tasks.flatMap((task) => taskEvents(task, options)),
 		'END:VCALENDAR'
 	];
-	return lines.map((line) => `${line}\r\n`).join('');
+	return lines.map((line) => `${fold(line)}\r\n`).join('');
 }
