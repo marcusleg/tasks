@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { getListStore } from '#lib/client/lists.svelte.js';
+	import {
+		askDeleteScope,
+		EditScopes,
+		getScopePrompt,
+		SCOPE_GROUP_LABELS,
+		seriesTarget,
+		type ScopeGroup
+	} from '#lib/client/occurrence-scope.svelte.js';
 	import { openTask } from '#lib/client/task-panel.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import LinkifiedText from '#lib/components/LinkifiedText.svelte';
@@ -20,6 +28,10 @@
 	 * Edits are saved as you type (debounced) and when a field loses focus. Render it inside
 	 * `{#key task.id}` so each Task starts with fresh drafts. A top-level Task lists its Subtasks
 	 * (with "Add subtask"); a Subtask links back to its parent.
+	 *
+	 * For a recurring Task, or a Subtask of one, a committed change asks whether it applies to this
+	 * Occurrence or to this and all future ones (`EditScopes`: once per field group while the panel
+	 * is open; typing is saved only once that is known). Deleting always asks.
 	 */
 	type Props = {
 		task: SerializedTask;
@@ -44,6 +56,17 @@
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 	let saved = untrack(() => ({ title: task.title, description: task.description }));
 
+	const prompt = getScopePrompt();
+	// Read from the store, not the props: a change can still be asked about while the panel closes.
+	const scopes = new EditScopes(prompt, () => {
+		const current = store.get(taskId);
+		return seriesTarget(current, store.get(current?.parentId));
+	});
+	let asking = false;
+	let deleted = false;
+	/** Bumped when a change is cancelled, so the field shows the saved value again. */
+	let revision = $state(0);
+
 	const completed = $derived(task.completedAt !== null);
 	const parent = $derived(store.get(task.parentId));
 	const subtasks = $derived(task.parentId === null ? store.subtasks(task.id) : []);
@@ -51,29 +74,69 @@
 
 	onMount(() => {
 		titleInput?.focus();
-		return () => save();
+		return () => void save();
 	});
 
-	/** Sends whatever changed since the last save. An empty Title is never saved. */
-	function save() {
-		clearTimeout(saveTimer);
-		saveTimer = undefined;
+	/** What changed since the last save, or `null`. An empty Title is never saved. */
+	function pendingPatch(): { title?: string; description?: string } | null {
 		const patch: { title?: string; description?: string } = {};
 		const trimmedTitle = title.trim();
 		if (trimmedTitle && trimmedTitle !== saved.title) patch.title = trimmedTitle;
 		if (description.trimEnd() !== saved.description) patch.description = description.trimEnd();
-		if (Object.keys(patch).length === 0) return;
+		return Object.keys(patch).length === 0 ? null : patch;
+	}
+
+	/**
+	 * Sends whatever changed since the last save. While typing (`committed` false), a recurring
+	 * Task's change waits until it's known which Occurrences it applies to; a commit asks.
+	 */
+	async function save(committed = true) {
+		clearTimeout(saveTimer);
+		saveTimer = undefined;
+		if (asking || deleted || !pendingPatch()) return;
+		if (!committed && scopes.unanswered('details')) return;
+		asking = true;
+		const applyTo = await scopes.choose('details');
+		asking = false;
+		if (applyTo === null) {
+			title = saved.title;
+			description = saved.description;
+			return;
+		}
+		const patch = pendingPatch();
+		if (!patch) return;
 		saved = {
 			title: patch.title ?? saved.title,
 			description: patch.description ?? saved.description
 		};
-		void store.update(taskId, patch);
+		void store.update(taskId, patch, applyTo);
 	}
 
 	function scheduleSave() {
 		clearTimeout(saveTimer);
-		saveTimer = setTimeout(save, SAVE_DELAY_MS);
+		saveTimer = setTimeout(() => save(false), SAVE_DELAY_MS);
 	}
+
+	async function changePriority(priority: SerializedTask['priority']) {
+		const applyTo = await scopes.choose('details');
+		if (applyTo === null) revision++;
+		else void store.update(taskId, { priority }, applyTo);
+	}
+
+	const chooseScope = (group: ScopeGroup) => () => scopes.choose(group);
+
+	/** What the panel remembers, e.g. "Date changes apply to this occurrence only." */
+	const scopeNote = $derived(
+		Object.entries(scopes.chosen)
+			.map(([group, applyTo]) => {
+				const label = SCOPE_GROUP_LABELS[group as ScopeGroup];
+				const what = label[0].toUpperCase() + label.slice(1);
+				const scope =
+					applyTo === 'occurrence' ? 'this occurrence only' : 'this and all future occurrences';
+				return `${what} apply to ${scope}.`;
+			})
+			.join(' ')
+	);
 
 	function onTitleKeydown(event: KeyboardEvent) {
 		// The Title is one line; Enter finishes it.
@@ -84,8 +147,8 @@
 	}
 
 	function onTitleBlur() {
-		save();
 		if (!title.trim()) title = saved.title;
+		void save();
 	}
 
 	async function editDescription() {
@@ -95,7 +158,7 @@
 	}
 
 	function onDescriptionBlur() {
-		save();
+		void save();
 		editingDescription = false;
 	}
 
@@ -108,15 +171,19 @@
 	}
 
 	function toggleCompleted() {
-		save();
+		void save();
 		if (completed) store.reopen(task.id);
 		else store.complete(task.id);
 	}
 
-	function remove() {
+	async function remove() {
 		clearTimeout(saveTimer);
+		const target = scopes.target;
+		const applyTo = target ? await askDeleteScope(prompt, target) : undefined;
+		if (applyTo === null) return;
+		deleted = true;
 		onClose();
-		void store.remove(task.id);
+		void store.remove(taskId, applyTo);
 	}
 
 	// "Move to List" (#11): to the top of the other List, with its Subtasks; a Subtask becomes a
@@ -168,6 +235,14 @@
 	</header>
 
 	<div class="fields">
+		{#if scopeNote}
+			<p class="scope-note" role="status">
+				<span>{scopeNote}</span>
+				<button type="button" class="link-button" onclick={() => scopes.forget()}>
+					Ask again
+				</button>
+			</p>
+		{/if}
 		<label class="visually-hidden" for="{id}-title">Title</label>
 		<textarea
 			bind:this={titleInput}
@@ -222,11 +297,14 @@
 			{/if}
 		</div>
 
-		<TaskDateFields {task} />
-		<PriorityField
-			value={task.priority}
-			onchange={(priority) => store.update(task.id, { priority })}
-		/>
+		{#key revision}
+			<TaskDateFields
+				{task}
+				chooseScope={chooseScope('dates')}
+				asksFirst={scopes.unanswered('dates')}
+			/>
+			<PriorityField value={task.priority} onchange={changePriority} />
+		{/key}
 
 		<RecurrenceField {task} />
 
@@ -248,7 +326,12 @@
 				{#if completed}
 					<p class="hint">Reopen the task to add subtasks.</p>
 				{:else}
-					<AddTaskRow listId={task.listId} parentId={task.id} label="Add subtask" />
+					<AddTaskRow
+						listId={task.listId}
+						parentId={task.id}
+						label="Add subtask"
+						chooseScope={chooseScope('subtasks')}
+					/>
 				{/if}
 			</section>
 		{/if}
@@ -357,6 +440,24 @@
 	.hint {
 		color: var(--muted);
 		font-size: 0.875rem;
+	}
+
+	.scope-note {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: var(--space-1) var(--space-2);
+		padding: var(--space-2) var(--space-3);
+		border: 1px solid var(--border);
+		border-left: 4px solid var(--accent-purple);
+		border-radius: var(--radius-md);
+		color: var(--muted);
+		font-size: 0.8125rem;
+	}
+
+	.scope-note .link-button {
+		margin-left: auto;
+		padding: 0 var(--space-1);
 	}
 
 	.move {

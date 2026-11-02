@@ -55,7 +55,7 @@ A rule that makes a Task repeat every N days, weeks (on chosen weekdays), months
 _Avoid_: Repeat, schedule, series
 
 **Occurrence**:
-One instance of a recurring Task. Only the current Occurrence exists in a List; later ones are projected from the Recurrence. When an Occurrence is completed it stays Completed, and the next Occurrence appears as a new open Task, with its Subtasks reopened and their dates shifted. You can edit or delete just the current Occurrence (deleting it skips to the next), or the current Occurrence and all future ones.
+One instance of a recurring Task. Only the current Occurrence exists in a List; later ones are projected from the Recurrence. When an Occurrence is completed it stays Completed, and the next Occurrence appears as a new open Task, with its Subtasks reopened and their dates shifted. You can edit or delete just the current Occurrence (deleting it skips to the next), or the current Occurrence and all future ones. Changes to its Subtasks work the same way; completing a Subtask is progress on the current Occurrence, not a change.
 _Avoid_: Instance, copy, repetition
 
 ### Ordering and views

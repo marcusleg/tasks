@@ -1,4 +1,9 @@
 <script lang="ts">
+	import {
+		askEditScope,
+		getScopePrompt,
+		seriesTarget
+	} from '#lib/client/occurrence-scope.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import type { Priority, SerializedTask } from '#lib/domain/tasks.js';
 	import PriorityMarker from './PriorityMarker.svelte';
@@ -7,11 +12,13 @@
 	/**
 	 * The Priority quick picker on a Task row: the marker as a button, opening a small menu of the
 	 * levels. Without a Priority the button stays out of the way until the row is hovered or focused
-	 * (always shown on touch screens). Esc or a click elsewhere closes the menu.
+	 * (always shown on touch screens). Esc or a click elsewhere closes the menu. A recurring Task (or
+	 * a Subtask of one) asks which Occurrences the change applies to.
 	 */
 	let { task }: { task: SerializedTask } = $props();
 
 	const store = getTaskStore();
+	const prompt = getScopePrompt();
 	const id = $props.id();
 	let open = $state(false);
 	let root = $state<HTMLElement>();
@@ -24,9 +31,13 @@
 		if (restoreFocus) button?.focus();
 	}
 
-	function choose(priority: Priority | null) {
+	async function choose(priority: Priority | null) {
 		close();
-		if (priority !== task.priority) void store.update(task.id, { priority });
+		if (priority === task.priority) return;
+		const id = task.id;
+		const target = seriesTarget(task, store.get(task.parentId));
+		const applyTo = target ? await askEditScope(prompt, target) : undefined;
+		if (applyTo !== null) void store.update(id, { priority }, applyTo);
 	}
 
 	function onWindowPointerDown(event: PointerEvent) {

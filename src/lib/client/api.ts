@@ -8,6 +8,7 @@ import type { SerializedList, SortMode } from '#lib/domain/lists.js';
 import type { SerializedDueDate, SerializedPlannedDate } from '#lib/domain/dates.js';
 import type { TaskMove } from '#lib/domain/moves.js';
 import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
+import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
 import type { Priority, SerializedTask, TaskChanges } from '#lib/domain/tasks.js';
 
 export class ApiError extends Error {
@@ -86,16 +87,29 @@ export const api = {
 		planned?: SerializedPlannedDate;
 		due?: SerializedDueDate;
 		priority?: Priority | null;
+		/** For a Subtask of a recurring Task: This Occurrence only, or all future ones too. */
+		applyTo?: ApplyTo;
 	}) => request<TaskChanges>('POST', resolve('/api/tasks'), input),
-	updateTask: (id: string, patch: TaskPatch) => request<TaskChanges>('PATCH', task(id), patch),
+	/** `applyTo`: which Occurrences of a recurring Task (or its Subtasks) the change reaches. */
+	updateTask: (id: string, patch: TaskPatch, applyTo?: ApplyTo) =>
+		request<TaskChanges>('PATCH', task(id), { ...patch, applyTo }),
 	/** `timeZone` is the browser's, for completion-anchored Recurrences. */
 	completeTask: (id: string, timeZone: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/complete', { id }), { timeZone }),
 	reopenTask: (id: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/reopen', { id }), {}),
-	/** `removed` holds the deleted Tasks as they were, for {@link api.restoreTasks}. */
-	deleteTask: (id: string) =>
-		request<TaskChanges & { removed: SerializedTask[] }>('DELETE', task(id)),
+	/**
+	 * `removed` holds the deleted Tasks as they were, for {@link api.restoreTasks}; `next` is the
+	 * Occurrence that took a skipped one's place. `applyTo` "occurrence" skips a recurring Task's
+	 * current Occurrence; `timeZone` is the browser's, for completion-anchored Recurrences.
+	 */
+	deleteTask: (id: string, options: { applyTo?: ApplyTo; timeZone?: string } = {}) => {
+		const query = new URLSearchParams();
+		if (options.applyTo) query.set('applyTo', options.applyTo);
+		if (options.timeZone) query.set('timeZone', options.timeZone);
+		const search = query.size > 0 ? `?${query}` : '';
+		return request<TaskChanges & { removed: SerializedTask[] }>('DELETE', `${task(id)}${search}`);
+	},
 	/** Undo for `deleteTask`: puts its `removed` Tasks back. */
 	restoreTasks: (tasks: SerializedTask[]) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/restore'), { tasks }),

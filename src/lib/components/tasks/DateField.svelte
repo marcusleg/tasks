@@ -34,9 +34,11 @@
 		/** The browser's IANA zone, from the clock. */
 		timeZone: string;
 		onchange: (value: Value) => void;
+		/** Save typed dates on blur only, not after a pause (e.g. when saving asks a question). */
+		deferTyped?: boolean;
 	};
 
-	let { kind, label, value, timeZone, onchange }: Props = $props();
+	let { kind, label, value, timeZone, onchange, deferTyped = false }: Props = $props();
 
 	const id = $props.id();
 	const TYPING_DELAY_MS = 600;
@@ -114,7 +116,7 @@
 	function onTyped() {
 		clearTimeout(typingTimer);
 		pending = typedValue();
-		if (pending) typingTimer = setTimeout(() => save(pending), TYPING_DELAY_MS);
+		if (pending && !deferTyped) typingTimer = setTimeout(() => save(pending), TYPING_DELAY_MS);
 	}
 
 	/** On blur, saves what's complete and shows the stored value again if the input was left empty. */

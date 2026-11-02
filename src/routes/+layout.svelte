@@ -7,6 +7,8 @@
 	import AppShell from '#lib/components/AppShell.svelte';
 	import SidebarNav from '#lib/components/SidebarNav.svelte';
 	import Toasts from '#lib/components/Toasts.svelte';
+	import ScopeDialog from '#lib/components/ScopeDialog.svelte';
+	import { ScopePrompt, setScopePrompt } from '#lib/client/occurrence-scope.svelte.js';
 	import { ListStore, setListStore } from '#lib/client/lists.svelte.js';
 	import { setToasts, Toasts as ToastQueue } from '#lib/client/toasts.svelte.js';
 	import { onMount } from 'svelte';
@@ -18,6 +20,7 @@
 
 	const toasts = setToasts(new ToastQueue());
 	setListStore(new ListStore(() => data.lists, toasts));
+	const scopePrompt = setScopePrompt(new ScopePrompt());
 
 	onMount(() => {
 		hydration.done = true;
@@ -42,6 +45,7 @@
 		{@render children()}
 	</AppShell>
 	<Toasts {toasts} />
+	<ScopeDialog prompt={scopePrompt} />
 {:else}
 	<!-- Public pages (sign in, not allowed) render without the shell. -->
 	{@render children()}

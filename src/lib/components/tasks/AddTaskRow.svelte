@@ -1,16 +1,24 @@
 <script lang="ts">
 	import { navigating } from '$app/state';
 	import { hydration } from '#lib/client/hydration.svelte.js';
+	import type { ApplyTo } from '#lib/client/occurrence-scope.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import { MAX_TITLE_LENGTH } from '#lib/domain/tasks.js';
 
 	/**
 	 * "Add a task": Enter adds the Task at the top of the List and keeps the field ready for the
 	 * next one. With `parentId` it adds Subtasks instead, at the bottom of the parent's Subtasks.
+	 * `chooseScope` asks whether a Subtask of a recurring Task is added to this Occurrence only or to
+	 * all future ones (`undefined`: no need to ask; `null`: cancelled, the title stays).
 	 */
-	type Props = { listId: string; parentId?: string | null; label?: string };
+	type Props = {
+		listId: string;
+		parentId?: string | null;
+		label?: string;
+		chooseScope?: () => Promise<ApplyTo | null | undefined>;
+	};
 
-	let { listId, parentId = null, label = 'Add a task' }: Props = $props();
+	let { listId, parentId = null, label = 'Add a task', chooseScope }: Props = $props();
 
 	const store = getTaskStore();
 	const id = $props.id();
@@ -22,11 +30,14 @@
 		navigating.to !== null && navigating.to.url.pathname !== navigating.from?.url.pathname
 	);
 
-	function submit(event: SubmitEvent) {
+	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		if (!title.trim()) return;
-		store.add(listId, title, parentId);
-		title = '';
+		const adding = title;
+		if (!adding.trim()) return;
+		const applyTo = chooseScope ? await chooseScope() : undefined;
+		if (applyTo === null) return;
+		store.add(listId, adding, parentId, applyTo);
+		if (title === adding) title = '';
 	}
 
 	function onkeydown(event: KeyboardEvent) {

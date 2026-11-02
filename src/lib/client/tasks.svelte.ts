@@ -35,6 +35,7 @@ import {
 import { moveChanges, moveError, stepMove, type Step, type TaskMove } from '#lib/domain/moves.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
 import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
+import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
 import { api, type TaskPatch } from './api.js';
 import { browserTimeZone } from './clock.svelte.js';
 import type { Toasts } from './toasts.svelte.js';
@@ -163,9 +164,9 @@ export class TaskStore {
 
 	/**
 	 * Adds a Task at the top of a List, or a Subtask at the bottom of its parent's Subtasks.
-	 * Returns its id right away.
+	 * Returns its id right away. `applyTo` is for a Subtask of a recurring Task (see `api`).
 	 */
-	add(listId: string, title: string, parentId: string | null = null): string {
+	add(listId: string, title: string, parentId: string | null = null, applyTo?: ApplyTo): string {
 		const id = newId();
 		const now = timestamp();
 		const siblings = Object.values(this.#tasks).filter(
@@ -195,13 +196,16 @@ export class TaskStore {
 				updatedAt: now
 			}
 		};
-		void this.#send('add the task', () => api.createTask({ id, listId, title, parentId }));
+		void this.#send('add the task', () =>
+			api.createTask({ id, listId, title, parentId, ...(applyTo && { applyTo }) })
+		);
 		return id;
 	}
 
-	update(id: string, patch: TaskPatch): Promise<boolean> {
+	/** `applyTo`: which Occurrences of a recurring Task (or its Subtasks) the change reaches. */
+	update(id: string, patch: TaskPatch, applyTo?: ApplyTo): Promise<boolean> {
 		this.#patchLocal(id, patch);
-		return this.#send('save the task', () => api.updateTask(id, patch));
+		return this.#send('save the task', () => api.updateTask(id, patch, applyTo));
 	}
 
 	/**
@@ -231,14 +235,14 @@ export class TaskStore {
 	 * Deletes a Task and its Subtasks. Undo restores them as the server deleted them (same ids,
 	 * positions, dates, completion and everything else).
 	 */
-	remove(id: string): Promise<boolean> {
+	remove(id: string, applyTo?: ApplyTo): Promise<boolean> {
 		const local = [this.#tasks[id], ...this.all.filter((task) => task.parentId === id)].filter(
 			(task) => task !== undefined
 		);
 		this.apply({ upserted: [], deleted: local.map((task) => task.id) });
 		let removed: SerializedTask[] | undefined;
 		const done = this.#send('delete the task', async () => {
-			const answer = await api.deleteTask(id);
+			const answer = await api.deleteTask(id, { applyTo, timeZone: browserTimeZone() });
 			removed = answer.removed;
 			return answer;
 		});
