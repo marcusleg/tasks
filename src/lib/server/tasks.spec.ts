@@ -325,10 +325,12 @@ describe('deleteTask', () => {
 		const parent = add(alice, list.id, 'Party');
 		const cake = add(alice, list.id, 'Cake', parent.id);
 		const candles = add(alice, list.id, 'Candles', parent.id);
+		// Adding Subtasks marks the parent as changed, so compare with its current state.
+		const before = getTask(alice, parent.id);
 
 		const changes = deleteTask(alice, parent.id);
 
-		expect(changes?.removed).toEqual([parent, cake, candles]);
+		expect(changes?.removed).toEqual([before, cake, candles]);
 	});
 
 	it("can't delete another User's Task", () => {
