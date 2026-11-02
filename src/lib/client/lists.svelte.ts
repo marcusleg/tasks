@@ -5,7 +5,14 @@
 import { getContext, setContext } from 'svelte';
 import { invalidate } from '$app/navigation';
 import { generateKeyBetween } from 'fractional-indexing';
-import { parseListName, sortLists, type SerializedList, type SortMode } from '#lib/domain/lists.js';
+import {
+	parseListName,
+	positionForMove,
+	sortLists,
+	type ListMove,
+	type SerializedList,
+	type SortMode
+} from '#lib/domain/lists.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
 import { LISTS_DEPENDENCY } from '#lib/dependencies.js';
 import { api } from './api.js';
@@ -84,6 +91,20 @@ export class ListStore {
 			return true;
 		} catch (cause) {
 			await this.#fail('save the list', cause);
+			return false;
+		}
+	}
+
+	/** Moves a List next to another one. Resolves to whether it worked. */
+	async move(id: string, move: ListMove): Promise<boolean> {
+		const current = this.get(id);
+		if (!current) return false;
+		this.#replace({ ...current, position: positionForMove(this.#lists, id, move) });
+		try {
+			this.#replace((await api.updateList(id, move)).list);
+			return true;
+		} catch (cause) {
+			await this.#fail('move the list', cause);
 			return false;
 		}
 	}
