@@ -522,13 +522,31 @@ function deleteWithSubtasks(scope: UserScope, id: string): string[] {
 	return [id, ...subtaskIds];
 }
 
-/** Deletes a Task and its Subtasks. `undefined` if the Task isn't the User's. */
-export function deleteTask(scope: UserScope, id: string): TaskChangeSet | undefined {
-	const task = getTask(scope, id);
-	if (!task) return undefined;
-	return scope.db.transaction(() => {
+/** What {@link deleteTask} removed, with the Tasks as they were, so Undo can restore them. */
+export interface DeletedTasks extends TaskChangeSet {
+	/** The deleted Task first, then its Subtasks in Custom Order. */
+	removed: Task[];
+}
+
+/**
+ * Deletes a Task and its Subtasks, and returns them as they were (for `restoreTasks`).
+ * `undefined` if the Task isn't the User's.
+ */
+export function deleteTask(scope: UserScope, id: string): DeletedTasks | undefined {
+	return scope.db.transaction((tx) => {
+		const task = getTask(scope, id);
+		if (!task) return undefined;
+
+		const subtasks = tx
+			.select()
+			.from(tasks)
+			.where(owned(scope, eq(tasks.parentId, id)))
+			.orderBy(asc(tasks.position), asc(tasks.id))
+			.all()
+			.map(toTask);
 		const deleted = deleteWithSubtasks(scope, id);
-		return changeSet(markChanged(scope, task.parentId), deleted);
+		const removed = [task, ...subtasks];
+		return { ...changeSet(markChanged(scope, task.parentId), deleted), removed };
 	});
 }
 

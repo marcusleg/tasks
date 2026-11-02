@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getListStore } from '#lib/client/lists.svelte.js';
@@ -25,8 +25,15 @@
 		scrollToFocus = false
 	}: { focus: SerializedList; tasks: SerializedTask[]; scrollToFocus?: boolean } = $props();
 
-	const store = setTaskStore(new TaskStore(() => tasks, getToasts()));
 	const lists = getListStore();
+	const store = setTaskStore(
+		new TaskStore(
+			() => tasks,
+			getToasts(),
+			(id) => lists.get(id)?.name
+		)
+	);
+	onDestroy(() => store.dispose());
 	// The columns scroll sideways inside <main> (AppShell).
 	const drag = setTaskDrag(new TaskDrag(store, lists, () => document.getElementById('main')));
 

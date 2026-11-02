@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { viewerTimeZone } from '#lib/client/clock.svelte.js';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { closeTask, openTaskId } from '#lib/client/task-panel.js';
@@ -20,8 +20,15 @@
 	 */
 	let { tasks }: { tasks: SerializedTask[] } = $props();
 
-	const store = setTaskStore(new TaskStore(() => tasks, getToasts()));
 	const lists = getListStore();
+	const store = setTaskStore(
+		new TaskStore(
+			() => tasks,
+			getToasts(),
+			(id) => lists.get(id)?.name
+		)
+	);
+	onDestroy(() => store.dispose());
 	const id = $props.id();
 
 	const selected = $derived(store.get(openTaskId()));

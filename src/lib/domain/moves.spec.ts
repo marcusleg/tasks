@@ -188,6 +188,48 @@ describe('moveChanges: nesting and promoting', () => {
 	});
 });
 
+describe('moveChanges: back to an earlier position (Undo)', () => {
+	const tasks = [
+		task('bread', 'a0'),
+		task('milk', 'a2'),
+		task('cake', 'a0', { parentId: 'milk' }),
+		task('report', 'a0', { listId: 'work' }),
+		task('eggs', 'a1', { listId: 'work' })
+	];
+
+	it('puts a Task back at its old key, between its old neighbours, with its Subtasks', () => {
+		const moved = after(tasks, 'eggs', { ...top(), position: 'a1' });
+		expect(order(moved, 'inbox')).toEqual(['bread', 'eggs', 'milk']);
+		expect(moved.find((t) => t.id === 'eggs')?.position).toBe('a1');
+
+		const back = after(after(tasks, 'milk', top('work')), 'milk', { ...top(), position: 'a2' });
+		expect(order(back, 'inbox')).toEqual(['bread', 'milk']);
+		expect(order(back, 'inbox', 'milk')).toEqual(['cake']);
+	});
+
+	it('goes right before a sibling that holds the key by now', () => {
+		const moved = after(tasks, 'report', { ...top(), position: 'a2' });
+		expect(order(moved, 'inbox')).toEqual(['bread', 'report', 'milk']);
+		expect(moved.find((t) => t.id === 'report')?.position).not.toBe('a2');
+	});
+
+	it('puts a Subtask back under its parent', () => {
+		const moved = after(tasks, 'eggs', { listId: 'inbox', parentId: 'milk', position: 'Zz' });
+		expect(order(moved, 'inbox', 'milk')).toEqual(['eggs', 'cake']);
+	});
+
+	it('refuses an invalid key, or a key together with a neighbour', () => {
+		expect(moveError(tasks, 'eggs', { ...top(), position: '' })).toBe('Invalid position');
+		expect(moveError(tasks, 'eggs', { ...top(), position: 'a0 ' })).toBe('Invalid position');
+		expect(moveError(tasks, 'eggs', { ...top(), position: 'a1', after: 'bread' })).toMatch(
+			/not both/
+		);
+		expect(() => moveChanges(tasks, 'eggs', { ...top(), position: 'zzz' })).toThrow(
+			InvalidInputError
+		);
+	});
+});
+
 describe('stepMove: the keyboard alternative', () => {
 	const DONE = '2026-11-01T00:00:00.000Z';
 	const tasks = [
