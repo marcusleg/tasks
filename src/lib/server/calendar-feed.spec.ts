@@ -2,14 +2,14 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { Temporal } from 'temporal-polyfill';
 import { dateOnly, unsetDate, type DueDate, type PlannedDate } from '#lib/domain/dates.js';
-import type { RecurrenceRule } from '#lib/domain/recurrence.js';
+import { parseRecurrence, type RecurrenceRule } from '#lib/domain/recurrence.js';
 import { buildCalendarLinkFeed, feedFilename, toCalendarTasks } from './calendar-feed';
 import { createCalendarLink } from './calendar-links';
 import { dueColumns, plannedColumns, recurrenceColumn } from './db/mapping';
 import { tasks } from './db/schema';
 import { createList } from './lists';
 import type { UserScope } from './scope';
-import { createTask, getTask } from './tasks';
+import { completeTask, createTask, getTask, updateTask } from './tasks';
 import { createTestDb, insertUser } from './testing/index';
 
 const ORIGIN = 'https://tasks.example.com';
@@ -188,6 +188,37 @@ describe('buildCalendarLinkFeed', () => {
 		const feed = buildCalendarLinkFeed(db, link, ORIGIN, NOW);
 		expect(feed).toContain('My task');
 		expect(feed).not.toContain('Secret');
+	});
+});
+
+describe('buildCalendarLinkFeed with recurring Tasks', () => {
+	it('publishes the current Occurrence as a series that moves on as Occurrences are completed', () => {
+		const { db, alice } = setUp();
+		const list = createList(alice, { name: 'Chores' });
+		const task = add(alice, list.id, 'Water plants', { planned: day('2026-03-04') });
+		updateTask(alice, task.id, {
+			recurrence: parseRecurrence({
+				frequency: 'weekly',
+				interval: 1,
+				end: { kind: 'count', count: 3 },
+				anchor: 'schedule'
+			})
+		});
+		const link = createCalendarLink(alice, { name: 'Chores' });
+		const seriesId = getTask(alice, task.id)!.seriesId;
+		const feed = () => buildCalendarLinkFeed(db, link, ORIGIN, NOW);
+
+		expect(feed()).toContain(`UID:${seriesId}-planned@tasks`);
+		expect(feed()).toContain('DTSTART;VALUE=DATE:20260304');
+		expect(feed()).toContain('RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=3');
+
+		completeTask(alice, task.id);
+
+		const after = feed();
+		expect(after.match(/BEGIN:VEVENT/g)).toHaveLength(1);
+		expect(after).toContain(`UID:${seriesId}-planned@tasks`);
+		expect(after).toContain('DTSTART;VALUE=DATE:20260311');
+		expect(after).toContain('RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=2');
 	});
 });
 

@@ -158,7 +158,7 @@ export type NextOccurrenceInput = OccurrenceDates & {
 };
 
 /** Moves a date by whole calendar days, keeping its wall-clock time, zone and Duration. */
-function shiftByDays<T extends TaskDate>(value: T, days: number): T {
+export function shiftByDays<T extends TaskDate>(value: T, days: number): T {
 	switch (value.kind) {
 		case 'unset':
 			return value;

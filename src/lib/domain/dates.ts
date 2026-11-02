@@ -99,6 +99,11 @@ function toDurationMinutes(value: unknown): number {
 	return value;
 }
 
+/** Validates an IANA time zone name (e.g. a browser's) and returns it in canonical case. Throws {@link InvalidDateError}. */
+export function parseTimeZone(value: unknown): string {
+	return toTimeZone(value);
+}
+
 export const unsetDate: UnsetDate = Object.freeze({ kind: 'unset' });
 
 /** A date-only (all-day) Planned or Due Date. */

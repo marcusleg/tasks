@@ -1,16 +1,23 @@
 /**
- * Reads the Planned Date, Due Date and Priority fields of a Task POST/PATCH body (see
- * `/api/tasks`). Dates come in the serialized shapes of `#lib/domain/dates` (`null` = unset) and
- * are validated by its parsers; anything malformed is a 400 naming the field.
+ * Reads the Planned Date, Due Date, Priority and Recurrence fields of a Task POST/PATCH body (see
+ * `/api/tasks`), and the browser's zone sent along with a completion. Dates and Recurrence come in
+ * the serialized shapes of `#lib/domain/dates` and `#lib/domain/recurrence` (`null` = unset) and
+ * are validated by their parsers; anything malformed is a 400 naming the field.
  */
 import { error } from '@sveltejs/kit';
 import {
 	InvalidDateError,
 	parseDueDate,
 	parsePlannedDate,
+	parseTimeZone,
 	type DueDate,
 	type PlannedDate
 } from '#lib/domain/dates.js';
+import {
+	InvalidRecurrenceError,
+	parseRecurrence,
+	type RecurrenceRule
+} from '#lib/domain/recurrence.js';
 import { isPriority, PRIORITIES, type Priority } from '#lib/domain/tasks.js';
 import type { JsonBody } from './http.js';
 
@@ -44,4 +51,20 @@ export function readDatesAndPriority(body: JsonBody): DatesAndPriority {
 		fields.priority = body.priority;
 	}
 	return fields;
+}
+
+/** The `recurrence` field: a rule, `null` to stop repeating, or `undefined` when absent. */
+export function readRecurrence(body: JsonBody): RecurrenceRule | null | undefined {
+	if (body.recurrence === undefined || body.recurrence === null) return body.recurrence;
+	try {
+		return parseRecurrence(body.recurrence);
+	} catch (cause) {
+		if (cause instanceof InvalidRecurrenceError) error(400, `recurrence: ${cause.message}`);
+		throw cause;
+	}
+}
+
+/** The `timeZone` field (an IANA zone such as the browser's), or `undefined` when absent. */
+export function readTimeZone(body: JsonBody): string | undefined {
+	return readDate(body, 'timeZone', parseTimeZone);
 }

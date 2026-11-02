@@ -4,6 +4,7 @@
  * another one, promoting a Subtask, and moving a Task (with its Subtasks) to another List.
  */
 import { generateKeyBetween } from 'fractional-indexing';
+import { RECURRENCE_CONFLICT_MESSAGES, recurrenceConflict } from './recurring-tasks';
 import { nestingError } from './subtasks';
 import { byCustomOrder } from './tasks';
 import { InvalidInputError } from './validation';
@@ -26,6 +27,7 @@ export interface Movable {
 	parentId: string | null;
 	position: string;
 	completedAt: unknown;
+	completedByCascade: boolean;
 	recurrence: unknown;
 }
 
@@ -52,8 +54,10 @@ export function moveError(tasks: readonly Movable[], id: string, move: TaskMove)
 		const hasSubtasks = tasks.some((t) => t.parentId === id);
 		const problem = nestingError(parent, { id, hasSubtasks });
 		if (problem) return problem;
-		if (parent.recurrence && task.recurrence) {
-			return 'A Task and its Subtasks can’t both recur';
+		// The same exclusivity rule as setting a Recurrence (`recurrenceConflict`).
+		if (task.recurrence) {
+			const conflict = recurrenceConflict({ ...task, parentId: move.parentId }, tasks);
+			if (conflict) return RECURRENCE_CONFLICT_MESSAGES[conflict];
 		}
 	}
 	if (move.before !== undefined && move.after !== undefined) {

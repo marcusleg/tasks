@@ -8,13 +8,15 @@
 		isOverdue,
 		isToday
 	} from '#lib/domain/date-display.js';
+	import { parseRecurrence } from '#lib/domain/recurrence.js';
+	import { describeRecurrence } from '#lib/domain/recurring-tasks.js';
 	import type { SerializedTask } from '#lib/domain/tasks.js';
 
 	/**
 	 * Compact Planned/Due chips for a Task row: calendar icon + "Today 09:00", flag icon +
-	 * "Due Fri". An open Task's passed Due Date reads "Overdue …" on accent-pink. The labels depend on
-	 * the browser's zone, so nothing renders until the clock has started after mount (no SSR
-	 * mismatch).
+	 * "Due Fri", and a repeat icon for a recurring Task. An open Task's passed Due Date reads
+	 * "Overdue …" on accent-pink. The labels depend on the browser's zone, so nothing renders until
+	 * the clock has started after mount (no SSR mismatch).
 	 */
 	let { task }: { task: SerializedTask } = $props();
 
@@ -23,6 +25,7 @@
 	const current = $derived(viewer());
 	const planned = $derived(parsePlannedDate(task.planned));
 	const due = $derived(parseDueDate(task.due));
+	const repeats = $derived(task.recurrence && describeRecurrence(parseRecurrence(task.recurrence)));
 	const overdue = $derived(!!current && !task.completedAt && isOverdue(due, current));
 
 	function minutes(total: number): string {
@@ -65,6 +68,16 @@
 				{formatTaskDate(due, current)}
 			</span>
 		{/if}
+		{#if repeats}
+			<span class="repeat" role="img" aria-label={repeats} title={repeats}>
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M17 2.5l3 3-3 3" />
+					<path d="M4 11.5v-1a5 5 0 0 1 5-5h11" />
+					<path d="M7 21.5l-3-3 3-3" />
+					<path d="M20 12.5v1a5 5 0 0 1-5 5H4" />
+				</svg>
+			</span>
+		{/if}
 	</p>
 {/if}
 
@@ -101,6 +114,13 @@
 		border-color: var(--accent-pink);
 		color: var(--on-accent);
 		font-weight: 700;
+	}
+
+	.repeat {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.5rem;
+		color: var(--muted);
 	}
 
 	svg {

@@ -9,6 +9,7 @@ type T = {
 	parentId: string | null;
 	position: string;
 	completedAt: string | null;
+	completedByCascade: boolean;
 	recurrence: object | null;
 };
 
@@ -18,6 +19,7 @@ const task = (id: string, position: string, extra: Partial<T> = {}): T => ({
 	parentId: null,
 	position,
 	completedAt: null,
+	completedByCascade: false,
 	recurrence: null,
 	...extra
 });
@@ -163,7 +165,7 @@ describe('moveChanges: nesting and promoting', () => {
 			task('dishes', 'a2')
 		];
 
-		expect(moveError(recurring, 'bins', under('chores'))).toMatch(/can’t both recur/);
+		expect(moveError(recurring, 'bins', under('chores'))).toMatch(/parent Task repeats/);
 		expect(moveError(recurring, 'dishes', under('chores'))).toBeNull();
 		expect(moveError(recurring, 'chores', under('dishes'))).toBeNull();
 	});
