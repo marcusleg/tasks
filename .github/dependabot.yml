@@ -1,0 +1,39 @@
+version: 2
+
+# Minor and patch updates are merged automatically once CI passes
+# (.github/workflows/dependabot-auto-merge.yml). Majors stay open for the
+# dependabot-major-updates skill (.claude/skills/dependabot-major-updates).
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    # Give the registry a few days to pull a compromised release before we
+    # merge it unattended.
+    cooldown:
+      default-days: 3
+    groups:
+      # drizzle-orm and drizzle-kit are 0.x, where a minor bump may break, and
+      # must move together. The auto-merge workflow leaves this group open.
+      drizzle:
+        patterns: ['drizzle-*']
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 3
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 3
