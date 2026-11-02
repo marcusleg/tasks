@@ -1,7 +1,14 @@
 import { eq } from 'drizzle-orm';
+import ICAL from 'ical.js';
 import { describe, expect, it } from 'vitest';
 import { Temporal } from 'temporal-polyfill';
-import { dateOnly, unsetDate, type DueDate, type PlannedDate } from '#lib/domain/dates.js';
+import {
+	dateOnly,
+	timedPlannedDate,
+	unsetDate,
+	type DueDate,
+	type PlannedDate
+} from '#lib/domain/dates.js';
 import { parseRecurrence, type RecurrenceRule } from '#lib/domain/recurrence.js';
 import { buildCalendarLinkFeed, feedFilename, toCalendarTasks } from './calendar-feed';
 import { createCalendarLink } from './calendar-links';
@@ -9,7 +16,7 @@ import { dueColumns, plannedColumns, recurrenceColumn } from './db/mapping';
 import { tasks } from './db/schema';
 import { createList } from './lists';
 import type { UserScope } from './scope';
-import { completeTask, createTask, getTask, updateTask } from './tasks';
+import { completeTask, createTask, deleteTask, getTask, updateTask } from './tasks';
 import { createTestDb, insertUser } from './testing/index';
 
 const ORIGIN = 'https://tasks.example.com';
@@ -219,6 +226,204 @@ describe('buildCalendarLinkFeed with recurring Tasks', () => {
 		expect(after).toContain(`UID:${seriesId}-planned@tasks`);
 		expect(after).toContain('DTSTART;VALUE=DATE:20260311');
 		expect(after).toContain('RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=2');
+	});
+});
+
+/** The feed's events, as ical.js reads them. */
+function eventsOf(feed: string): ICAL.Event[] {
+	return new ICAL.Component(ICAL.parse(feed))
+		.getAllSubcomponents('vevent')
+		.map((component) => new ICAL.Event(component));
+}
+
+/** The first `count` starts of an event (series or not), as ical.js expands them. */
+function starts(event: ICAL.Event, count = 3): string[] {
+	const iterator = event.iterator();
+	const result: string[] = [];
+	for (let next = iterator.next(); next && result.length < count; next = iterator.next()) {
+		result.push(next.toString());
+	}
+	return result;
+}
+
+function byUid(feed: string, uid: string): ICAL.Event {
+	const event = eventsOf(feed).find((candidate) => candidate.uid === uid);
+	if (!event) throw new Error(`No event ${uid} in the feed`);
+	return event;
+}
+
+describe('buildCalendarLinkFeed: recurring Tasks as event series (#20)', () => {
+	function recurring(scope: UserScope, listId: string, title: string, fields: object) {
+		const task = add(scope, listId, title);
+		updateTask(scope, task.id, fields);
+		return getTask(scope, task.id)!;
+	}
+
+	const rule = (fields: Record<string, unknown>) =>
+		parseRecurrence({ interval: 1, end: { kind: 'never' }, anchor: 'schedule', ...fields });
+
+	it('keeps the series UID across completions while the series moves on', () => {
+		const { db, alice } = setUp();
+		const list = createList(alice, { name: 'Chores' });
+		const task = recurring(alice, list.id, 'Water plants', {
+			planned: day('2026-03-02'),
+			recurrence: rule({ frequency: 'weekly' })
+		});
+		const link = createCalendarLink(alice, { name: 'Chores' });
+		const uid = `${task.seriesId}-planned@tasks`;
+
+		expect(starts(byUid(buildCalendarLinkFeed(db, link, ORIGIN, NOW), uid))).toEqual([
+			'2026-03-02',
+			'2026-03-09',
+			'2026-03-16'
+		]);
+		const second = completeTask(alice, task.id)!.upserted.find((t) => t.completedAt === null)!;
+		completeTask(alice, second.id);
+
+		const feed = buildCalendarLinkFeed(db, link, ORIGIN, NOW);
+		expect(eventsOf(feed).map((event) => event.uid)).toEqual([uid]);
+		expect(starts(byUid(feed, uid))).toEqual(['2026-03-16', '2026-03-23', '2026-03-30']);
+	});
+
+	it('ends the series with COUNT (what is left) or UNTIL', () => {
+		const { db, alice } = setUp();
+		const list = createList(alice, { name: 'Chores' });
+		const counted = recurring(alice, list.id, 'Course', {
+			planned: day('2026-03-02'),
+			recurrence: rule({ frequency: 'weekly', end: { kind: 'count', count: 3 } })
+		});
+		const until = recurring(alice, list.id, 'Season', {
+			due: day('2026-03-03'),
+			recurrence: rule({ frequency: 'weekly', end: { kind: 'until', date: '2026-03-17' } })
+		});
+		completeTask(alice, counted.id);
+		const link = createCalendarLink(alice, { name: 'Chores' });
+
+		const feed = buildCalendarLinkFeed(db, link, ORIGIN, NOW);
+		expect(starts(byUid(feed, `${counted.seriesId}-planned@tasks`), 5)).toEqual([
+			'2026-03-09',
+			'2026-03-16'
+		]);
+		expect(starts(byUid(feed, `${until.seriesId}-due@tasks`), 5)).toEqual([
+			'2026-03-03',
+			'2026-03-10',
+			'2026-03-17'
+		]);
+	});
+
+	it('projects a completion-anchored series as if each Occurrence is completed on time', () => {
+		const { db, alice } = setUp();
+		const list = createList(alice, { name: 'Self' });
+		const task = recurring(alice, list.id, 'Haircut', {
+			planned: day('2026-03-02'),
+			recurrence: rule({ frequency: 'daily', interval: 10, anchor: 'completion' })
+		});
+		const link = createCalendarLink(alice, { name: 'Self' });
+
+		const feed = buildCalendarLinkFeed(db, link, ORIGIN, NOW);
+		expect(starts(byUid(feed, `${task.seriesId}-planned@tasks`))).toEqual([
+			'2026-03-02',
+			'2026-03-12',
+			'2026-03-22'
+		]);
+	});
+
+	it('leaves out a recurring Subtask of a Completed parent', () => {
+		const { db, alice } = setUp();
+		const list = createList(alice, { name: 'Garden' });
+		const parent = add(alice, list.id, 'Garden');
+		const subtask = add(alice, list.id, 'Water plants', { parentId: parent.id });
+		updateTask(alice, subtask.id, {
+			planned: day('2026-03-04'),
+			recurrence: rule({ frequency: 'weekly' })
+		});
+		const link = createCalendarLink(alice, { name: 'Garden' });
+		expect(eventsOf(buildCalendarLinkFeed(db, link, ORIGIN, NOW))).toHaveLength(1);
+
+		completeTask(alice, parent.id);
+
+		expect(eventsOf(buildCalendarLinkFeed(db, link, ORIGIN, NOW))).toEqual([]);
+	});
+
+	describe('an Occurrence changed with "This Occurrence"', () => {
+		/** Weekly on Mondays at 09:00 (Berlin); this week's moved to Tuesday 14:00. */
+		function moved(db: ReturnType<typeof setUp>['db'], alice: UserScope) {
+			const list = createList(alice, { name: 'Chores' });
+			const task = recurring(alice, list.id, 'Water plants', {
+				planned: timedPlannedDate('2026-03-02T09:00', 'Europe/Berlin'),
+				recurrence: rule({ frequency: 'weekly', end: { kind: 'count', count: 3 } })
+			});
+			updateTask(
+				alice,
+				task.id,
+				{
+					title: 'Water the ferns',
+					planned: timedPlannedDate('2026-03-03T14:00', 'Europe/Berlin')
+				},
+				'occurrence'
+			);
+			const link = createCalendarLink(alice, { name: 'Chores' });
+			return { task, feed: () => buildCalendarLinkFeed(db, link, ORIGIN, NOW) };
+		}
+
+		it('is passed on as detached, with the template the series steps from', () => {
+			const { alice } = setUp();
+			const list = createList(alice, { name: 'L' });
+			const task = recurring(alice, list.id, 'Water plants', {
+				planned: day('2026-03-02'),
+				recurrence: rule({ frequency: 'weekly' })
+			});
+			updateTask(alice, task.id, { planned: day('2026-03-03') }, 'occurrence');
+
+			const [calendarTask] = mapAll(alice, list.id)();
+			expect(calendarTask.recurrence).toMatchObject({
+				detached: true,
+				template: { title: 'Water plants', planned: day('2026-03-02') }
+			});
+		});
+
+		it('is published on its own, followed by the series from the template', () => {
+			const { db, alice } = setUp();
+			const { task, feed } = moved(db, alice);
+
+			const single = byUid(feed(), `${task.id}-planned@tasks`);
+			expect(starts(single)).toEqual(['2026-03-03T14:00:00']);
+			expect(single.summary).toBe('Water the ferns');
+			const series = byUid(feed(), `${task.seriesId}-planned@tasks`);
+			// Two Occurrences are left after this one, on Mondays at 09:00 as before.
+			expect(starts(series, 5)).toEqual(['2026-03-09T09:00:00', '2026-03-16T09:00:00']);
+			expect(series.summary).toBe('Water plants');
+		});
+
+		it('once completed, gives way to the series under the same UID', () => {
+			const { db, alice } = setUp();
+			const { task, feed } = moved(db, alice);
+
+			completeTask(alice, task.id, new Date('2026-03-03T14:30:00Z'));
+
+			expect(eventsOf(feed()).map((event) => event.uid)).toEqual([
+				`${task.seriesId}-planned@tasks`
+			]);
+			expect(starts(byUid(feed(), `${task.seriesId}-planned@tasks`), 5)).toEqual([
+				'2026-03-09T09:00:00',
+				'2026-03-16T09:00:00'
+			]);
+		});
+
+		it('when skipped, is replaced by the series from the next Occurrence', () => {
+			const { db, alice } = setUp();
+			const { task, feed } = moved(db, alice);
+
+			deleteTask(alice, task.id, 'occurrence');
+
+			expect(eventsOf(feed()).map((event) => event.uid)).toEqual([
+				`${task.seriesId}-planned@tasks`
+			]);
+			expect(starts(byUid(feed(), `${task.seriesId}-planned@tasks`), 5)).toEqual([
+				'2026-03-09T09:00:00',
+				'2026-03-16T09:00:00'
+			]);
+		});
 	});
 });
 

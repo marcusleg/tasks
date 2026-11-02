@@ -129,10 +129,14 @@ test('after the new Occurrence is edited, reopening the old one brings it back a
 	await weeklyTask(page);
 	await completeWaterPlants(page);
 	await openTask(page, 'Water plants');
-	await saved(page, async () => {
-		await detailPanel(page).getByRole('textbox', { name: 'Title' }).fill('Water all plants');
-		await detailPanel(page).getByRole('textbox', { name: 'Title' }).blur();
-	});
+	await detailPanel(page).getByRole('textbox', { name: 'Title' }).fill('Water all plants');
+	await detailPanel(page).getByRole('textbox', { name: 'Title' }).blur();
+	await saved(page, () =>
+		page
+			.getByRole('dialog', { name: 'Change a repeating task' })
+			.getByRole('button', { name: 'This and all future' })
+			.click()
+	);
 	await closePanel(page);
 
 	await column(page, LIST).getByText('Completed (2)').click();

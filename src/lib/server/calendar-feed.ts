@@ -4,6 +4,7 @@
  */
 import { Temporal } from 'temporal-polyfill';
 import { buildCalendar, type CalendarTask } from '#lib/domain/ics.js';
+import { isDetached } from '#lib/domain/recurring-tasks.js';
 import type { Task } from '#lib/domain/tasks.js';
 import type { Db } from './db/client.js';
 import { getLists } from './lists.js';
@@ -19,8 +20,10 @@ const isDated = (task: Task) => task.planned.kind !== 'unset' || task.due.kind !
  * - Undated Subtasks go into their parent's `undatedSubtasks` checklist (Completed ones as ☑);
  *   open dated Subtasks become CalendarTasks of their own with `parentTitle`.
  * - Tasks without any date are skipped (their dated Subtasks are still published).
- * - A Task with a Recurrence passes `{ seriesId, rule, occurrencesSoFar }`; `detached` stays unset
- *   until "This Occurrence" edits exist (#17).
+ * - A Task with a Recurrence passes `{ seriesId, rule, occurrencesSoFar }`. An Occurrence changed
+ *   with "This Occurrence" so that it differs from its series template in dates, Title or
+ *   Description (`isDetached`) also passes `detached` and the template, which the series is
+ *   published from.
  */
 export function toCalendarTasks(input: {
 	tasks: Task[];
@@ -62,7 +65,18 @@ export function toCalendarTasks(input: {
 						recurrence: {
 							seriesId: task.seriesId ?? task.id,
 							rule: task.recurrence,
-							occurrencesSoFar: task.occurrencesSoFar
+							occurrencesSoFar: task.occurrencesSoFar,
+							...(task.seriesTemplate && isDetached(task)
+								? {
+										detached: true,
+										template: {
+											title: task.seriesTemplate.title,
+											description: task.seriesTemplate.description,
+											planned: task.seriesTemplate.planned,
+											due: task.seriesTemplate.due
+										}
+									}
+								: {})
 						}
 					}
 				: {})

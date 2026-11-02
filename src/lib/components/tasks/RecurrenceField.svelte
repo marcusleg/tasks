@@ -53,7 +53,11 @@
 	onMount(() => (mounted = true));
 
 	const rule = $derived(task.recurrence);
-	const dates = $derived({ planned: parsePlannedDate(task.planned), due: parseDueDate(task.due) });
+	// An Occurrence moved with "This Occurrence" isn't on the rule; its series template is.
+	const dates = $derived({
+		planned: parsePlannedDate((task.seriesTemplate ?? task).planned),
+		due: parseDueDate((task.seriesTemplate ?? task).due)
+	});
 	/** The date the rule steps, whose weekday and day of month are the defaults. */
 	const driver = $derived(
 		hasDate(dates) ? localDate(dates[stepDriver(dates)] as DateOnly | TimedDate) : null

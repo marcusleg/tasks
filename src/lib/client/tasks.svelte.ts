@@ -35,6 +35,7 @@ import {
 import { moveChanges, moveError, stepMove, type Step, type TaskMove } from '#lib/domain/moves.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
 import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
+import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
 import { api, type TaskPatch } from './api.js';
 import { browserTimeZone } from './clock.svelte.js';
 import type { Toasts } from './toasts.svelte.js';
@@ -163,9 +164,9 @@ export class TaskStore {
 
 	/**
 	 * Adds a Task at the top of a List, or a Subtask at the bottom of its parent's Subtasks.
-	 * Returns its id right away.
+	 * Returns its id right away. `applyTo` is for a Subtask of a recurring Task (see `api`).
 	 */
-	add(listId: string, title: string, parentId: string | null = null): string {
+	add(listId: string, title: string, parentId: string | null = null, applyTo?: ApplyTo): string {
 		const id = newId();
 		const now = timestamp();
 		const siblings = Object.values(this.#tasks).filter(
@@ -195,13 +196,16 @@ export class TaskStore {
 				updatedAt: now
 			}
 		};
-		void this.#send('add the task', () => api.createTask({ id, listId, title, parentId }));
+		void this.#send('add the task', () =>
+			api.createTask({ id, listId, title, parentId, ...(applyTo && { applyTo }) })
+		);
 		return id;
 	}
 
-	update(id: string, patch: TaskPatch): Promise<boolean> {
+	/** `applyTo`: which Occurrences of a recurring Task (or its Subtasks) the change reaches. */
+	update(id: string, patch: TaskPatch, applyTo?: ApplyTo): Promise<boolean> {
 		this.#patchLocal(id, patch);
-		return this.#send('save the task', () => api.updateTask(id, patch));
+		return this.#send('save the task', () => api.updateTask(id, patch, applyTo));
 	}
 
 	/**
@@ -229,25 +233,30 @@ export class TaskStore {
 
 	/**
 	 * Deletes a Task and its Subtasks. Undo restores them as the server deleted them (same ids,
-	 * positions, dates, completion and everything else).
+	 * positions, dates, completion and everything else). `applyTo` "occurrence" skips a recurring
+	 * Task's current Occurrence: the next one comes with the server's answer, and Undo puts the
+	 * skipped one back in its place.
 	 */
-	remove(id: string): Promise<boolean> {
+	remove(id: string, applyTo?: ApplyTo): Promise<boolean> {
 		const local = [this.#tasks[id], ...this.all.filter((task) => task.parentId === id)].filter(
 			(task) => task !== undefined
 		);
 		this.apply({ upserted: [], deleted: local.map((task) => task.id) });
 		let removed: SerializedTask[] | undefined;
+		let next: string | null = null;
 		const done = this.#send('delete the task', async () => {
-			const answer = await api.deleteTask(id);
+			const answer = await api.deleteTask(id, { applyTo, timeZone: browserTimeZone() });
 			removed = answer.removed;
+			next = answer.next;
 			return answer;
 		});
 		this.#offerUndo('Task deleted', done, () => {
 			this.apply({ upserted: local, deleted: [] });
-			// Queued after the delete, so its answer (with `removed`) is in by then.
+			// Queued after the delete, so its answer (with `removed` and `next`) is in by then; the
+			// restore's answer removes the next Occurrence it replaces.
 			void this.#send('restore the task', () => {
 				if (!removed) throw new Error('The task wasn’t deleted');
-				return api.restoreTasks(removed);
+				return api.restoreTasks(removed, next);
 			});
 		});
 		return done;

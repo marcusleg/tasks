@@ -2,7 +2,7 @@ import { isHttpError } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
 import { serializeDueDate, serializePlannedDate } from '#lib/domain/dates.js';
 import { serializeRecurrence } from '#lib/domain/recurrence.js';
-import { readDatesAndPriority, readRecurrence, readTimeZone } from './task-input';
+import { readApplyTo, readDatesAndPriority, readRecurrence, readTimeZone } from './task-input';
 
 /** The status and message of the HTTP error `run` throws. */
 function httpError(run: () => unknown): { status: number; message: string } {
@@ -133,5 +133,21 @@ describe('readTimeZone', () => {
 
 	it.each(['Mars/Olympus', '+01:00', 42])('answers 400 for %j', (timeZone) => {
 		expect(httpError(() => readTimeZone({ timeZone }))).toMatchObject({ status: 400 });
+	});
+});
+
+describe('readApplyTo', () => {
+	it('reads “occurrence” and “future”, and nothing as undefined', () => {
+		expect(readApplyTo('occurrence')).toBe('occurrence');
+		expect(readApplyTo('future')).toBe('future');
+		expect(readApplyTo(undefined)).toBeUndefined();
+		expect(readApplyTo(null)).toBeUndefined();
+	});
+
+	it('is a 400 for anything else', () => {
+		expect(httpError(() => readApplyTo('all'))).toEqual({
+			status: 400,
+			message: 'applyTo must be occurrence or future'
+		});
 	});
 });

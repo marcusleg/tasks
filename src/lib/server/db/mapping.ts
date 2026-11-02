@@ -17,7 +17,7 @@ import {
 	serializeRecurrence,
 	type RecurrenceRule
 } from '#lib/domain/recurrence.js';
-import type { Task } from '#lib/domain/tasks.js';
+import { parseSeriesTemplate, serializeSeriesTemplate, type Task } from '#lib/domain/tasks.js';
 import type { ListRow, NewTaskRow, TaskRow } from './schema.js';
 
 export function toList(row: ListRow): List {
@@ -112,7 +112,7 @@ export function toTask(row: TaskRow): Task {
 		occurrencesSoFar: row.occurrencesSoFar,
 		generatedFromTaskId: row.generatedFromTaskId,
 		changedSinceGenerated: row.changedSinceGenerated,
-		seriesTemplate: row.seriesTemplate,
+		seriesTemplate: row.seriesTemplate === null ? null : parseSeriesTemplate(row.seriesTemplate),
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt
 	};
@@ -140,6 +140,6 @@ export function taskColumns(
 		occurrencesSoFar: task.occurrencesSoFar,
 		generatedFromTaskId: task.generatedFromTaskId,
 		changedSinceGenerated: task.changedSinceGenerated,
-		seriesTemplate: task.seriesTemplate
+		seriesTemplate: task.seriesTemplate && serializeSeriesTemplate(task.seriesTemplate)
 	};
 }
