@@ -1,14 +1,16 @@
 import { json } from '@sveltejs/kit';
 import { notFound, optionalString, readJson, withInputErrors } from '#lib/server/http.js';
 import { userScope } from '#lib/server/scope.js';
-import { readDatesAndPriority } from '#lib/server/task-input.js';
+import { readDatesAndPriority, readRecurrence } from '#lib/server/task-input.js';
 import { deleteTask, serializeChanges, updateTask } from '#lib/server/tasks.js';
 import type { RequestHandler } from './$types';
 
 /**
- * Edits a Task: `{ title?, description?, planned?, due?, priority? }` → `TaskChanges`. Dates use
- * the serialized shapes from `#lib/domain/dates` (`null` = unset) and are stored with the zone
- * they carry; Priority is `high`, `medium`, `low` or `null`.
+ * Edits a Task: `{ title?, description?, planned?, due?, priority?, recurrence? }` →
+ * `TaskChanges`. Dates use the serialized shapes from `#lib/domain/dates` (`null` = unset) and are
+ * stored with the zone they carry; Priority is `high`, `medium`, `low` or `null`; Recurrence is a
+ * `SerializedRecurrence` (`#lib/domain/recurrence`) or `null` to stop repeating. 400 for a
+ * recurring Task without any date, or a Recurrence that a Task and its Subtasks would share.
  */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	const scope = userScope(locals);
@@ -16,7 +18,8 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	const patch = {
 		title: optionalString(body, 'title'),
 		description: optionalString(body, 'description'),
-		...readDatesAndPriority(body)
+		...readDatesAndPriority(body),
+		recurrence: readRecurrence(body)
 	};
 
 	const changes = withInputErrors(() => updateTask(scope, params.id, patch));

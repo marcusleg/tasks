@@ -1,7 +1,8 @@
 import { isHttpError } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
 import { serializeDueDate, serializePlannedDate } from '#lib/domain/dates.js';
-import { readDatesAndPriority } from './task-input';
+import { serializeRecurrence } from '#lib/domain/recurrence.js';
+import { readDatesAndPriority, readRecurrence, readTimeZone } from './task-input';
 
 /** The status and message of the HTTP error `run` throws. */
 function httpError(run: () => unknown): { status: number; message: string } {
@@ -92,5 +93,45 @@ describe('readDatesAndPriority', () => {
 
 	it.each(['urgent', 'High', 1, ''])('answers 400 for the Priority %j', (priority) => {
 		expect(httpError(() => readDatesAndPriority({ priority }))).toMatchObject({ status: 400 });
+	});
+});
+
+describe('readRecurrence', () => {
+	const rule = {
+		frequency: 'monthly',
+		interval: 2,
+		monthDay: 31,
+		end: { kind: 'until', date: '2027-06-30' },
+		anchor: 'completion'
+	};
+
+	it('reads a serialized Recurrence, null, or nothing', () => {
+		expect(serializeRecurrence(readRecurrence({ recurrence: rule })!)).toEqual(rule);
+		expect(readRecurrence({ recurrence: null })).toBeNull();
+		expect(readRecurrence({ title: 'Milk' })).toBeUndefined();
+	});
+
+	it.each([
+		['an unknown frequency', { ...rule, frequency: 'hourly' }],
+		['a zero interval', { ...rule, interval: 0 }],
+		['weekdays on a monthly rule', { ...rule, weekdays: [1] }],
+		['a bad end', { ...rule, end: { kind: 'count', count: 0 } }],
+		['a string', 'weekly']
+	])('answers 400 for %s', (_, recurrence) => {
+		expect(httpError(() => readRecurrence({ recurrence }))).toMatchObject({
+			status: 400,
+			message: expect.stringMatching(/^recurrence: /)
+		});
+	});
+});
+
+describe('readTimeZone', () => {
+	it('reads an IANA zone, or nothing', () => {
+		expect(readTimeZone({ timeZone: 'Europe/Berlin' })).toBe('Europe/Berlin');
+		expect(readTimeZone({})).toBeUndefined();
+	});
+
+	it.each(['Mars/Olympus', '+01:00', 42])('answers 400 for %j', (timeZone) => {
+		expect(httpError(() => readTimeZone({ timeZone }))).toMatchObject({ status: 400 });
 	});
 });
