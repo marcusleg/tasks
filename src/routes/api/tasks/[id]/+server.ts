@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { notFound, optionalString, readJson, withInputErrors } from '#lib/server/http.js';
+import { serializeTask } from '#lib/domain/tasks.js';
 import { userScope } from '#lib/server/scope.js';
 import { readDatesAndPriority, readRecurrence } from '#lib/server/task-input.js';
 import { deleteTask, serializeChanges, updateTask } from '#lib/server/tasks.js';
@@ -27,9 +28,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	return json(serializeChanges(changes));
 };
 
-/** Deletes a Task and its Subtasks → `TaskChanges`. */
+/**
+ * Deletes a Task and its Subtasks → `TaskChanges & { removed: SerializedTask[] }`. `removed` holds
+ * the deleted Tasks as they were (the Task first, then its Subtasks), for `POST /api/tasks/restore`.
+ */
 export const DELETE: RequestHandler = ({ locals, params }) => {
 	const changes = deleteTask(userScope(locals), params.id);
 	if (!changes) notFound('Task');
-	return json(serializeChanges(changes));
+	return json({ ...serializeChanges(changes), removed: changes.removed.map(serializeTask) });
 };
