@@ -163,8 +163,8 @@
 							/>
 						</svg>
 					</button>
-					<!-- An eye, not a checkmark: the checkbox shows or hides the List, it doesn't complete it. -->
-					<label class="visibility" title={list.visible ? 'Hide list' : 'Show list'}>
+					<!-- An eye, not a checkmark: this shows or hides the List, it doesn't complete it. -->
+					<label class="visibility">
 						<input
 							type="checkbox"
 							aria-label="Show {list.name}"
@@ -172,26 +172,19 @@
 							disabled={!hydration.done}
 							onchange={(event) => toggle(list.id, event.currentTarget.checked)}
 						/>
-						<svg class="eye" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-							<path
-								d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-							<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2" />
-						</svg>
-						<svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-							<path
-								d="M10.6 5.1A9.9 9.9 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-2.9 3.9M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
+						<svg
+							viewBox="0 0 24 24"
+							width="18"
+							height="18"
+							aria-hidden="true"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						>
+							<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+							<circle cx="12" cy="12" r="3" />
+							<path class="slash" d="M3 3l18 18" />
 						</svg>
 					</label>
 					<a
@@ -357,52 +350,23 @@
 		place-items: center;
 		width: 2rem;
 		height: 2rem;
-		border-radius: var(--radius-sm);
 		color: var(--muted);
-		cursor: pointer;
 	}
 
-	.visibility:hover {
-		color: var(--fg);
-		background: var(--surface-hover);
-	}
-
-	.visibility:has(input:checked) {
-		color: var(--accent-purple);
-	}
-
-	.visibility:has(input:focus-visible) {
-		outline: 2px solid var(--accent-pink);
-		outline-offset: 2px;
-	}
-
-	/* The real checkbox covers the icon, so it still takes the click, but isn't drawn. */
+	/* The checkbox covers the icon to take the click, but isn't drawn. */
 	.visibility input {
 		appearance: none;
 		position: absolute;
 		inset: 0;
-		width: 100%;
-		height: 100%;
 		margin: 0;
-		background: none;
-		border: none;
 		cursor: pointer;
 	}
 
-	.visibility input:focus-visible {
-		outline: none;
+	.visibility input:checked + svg {
+		color: var(--accent-purple);
 	}
 
-	.visibility input:disabled {
-		cursor: default;
-	}
-
-	.visibility svg {
-		pointer-events: none;
-	}
-
-	.visibility input:checked ~ .eye-off,
-	.visibility input:not(:checked) ~ .eye {
+	.visibility input:checked + svg .slash {
 		display: none;
 	}
 
