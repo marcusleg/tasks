@@ -1,6 +1,6 @@
 # better-sqlite3 runs node-gyp on install, which needs Python and a toolchain
 # (it only compiles when no prebuilt binary matches the platform).
-FROM node:24-slim AS base
+FROM node:26-slim AS base
 WORKDIR /app
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends python3 make g++ \
@@ -17,7 +17,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
 	&& npm cache clean --force
 
-FROM node:24-slim AS runtime
+FROM node:26-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
 	PORT=3000 \

@@ -13,7 +13,7 @@ Built with SvelteKit (Svelte 5, TypeScript) on the Node adapter, with SQLite thr
 
 ## Local development
 
-Requires Node 24 and npm.
+Requires Node 26 and npm.
 
 ```sh
 npm install
