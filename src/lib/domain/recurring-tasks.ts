@@ -105,3 +105,17 @@ export function nextOccurrenceStep(
 	const to = localDate(next[driver] as DateOnly | TimedDate);
 	return { ...next, days: from.until(to).days };
 }
+
+const UNITS = {
+	daily: ['daily', 'days'],
+	weekly: ['weekly', 'weeks'],
+	monthly: ['monthly', 'months'],
+	yearly: ['yearly', 'years']
+} as const;
+
+/** A short label for a Recurrence, e.g. "Repeats weekly" or "Repeats every 10 days after completion". */
+export function describeRecurrence(rule: RecurrenceRule): string {
+	const [single, plural] = UNITS[rule.frequency];
+	const every = rule.interval === 1 ? single : `every ${rule.interval} ${plural}`;
+	return `Repeats ${every}${rule.anchor === 'completion' ? ' after completion' : ''}`;
+}

@@ -12,6 +12,7 @@
 	import AddTaskRow from './AddTaskRow.svelte';
 	import TaskRow from './TaskRow.svelte';
 	import PriorityField from './PriorityField.svelte';
+	import RecurrenceField from './RecurrenceField.svelte';
 	import TaskDateFields from './TaskDateFields.svelte';
 
 	/**
@@ -227,7 +228,7 @@
 			onchange={(priority) => store.update(task.id, { priority })}
 		/>
 
-		<!-- #16 (Recurrence) adds its fields here. -->
+		<RecurrenceField {task} />
 
 		{#if task.parentId === null}
 			<section class="subtasks" aria-labelledby="{id}-subtasks">
