@@ -45,7 +45,7 @@ The state of a Task that has been checked off. Completing a Task completes all o
 _Avoid_: Done, finished, archived
 
 **Reopen**:
-Undoing a Task's Completed state. If the Occurrence being reopened is the one that created the current Occurrence, and that current Occurrence hasn't been changed by the User, the reopened Occurrence takes its place again. In every other case it comes back as a one-off Task with no Recurrence.
+Undoing a Task's Completed state. Reopening a Subtask whose parent is Completed reopens the parent too (a Completed Task never has open Subtasks), but not its other Subtasks. If the Occurrence being reopened is the one that created the current Occurrence, and that current Occurrence hasn't been changed by the User, the reopened Occurrence takes its place again. In every other case it comes back as a one-off Task with no Recurrence.
 _Avoid_: Uncomplete, uncheck, restore
 
 ### Recurrence
