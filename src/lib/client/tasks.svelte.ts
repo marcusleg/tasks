@@ -5,8 +5,14 @@
  * is typing into should keep their own draft rather than bind to the store, so a late answer
  * never overwrites newer keystrokes.
  *
+ * Completing, deleting and moving a Task to another List offer Undo in a toast (#14), which puts
+ * back the exact previous state through the server: Reopen (which also restores the Subtasks the
+ * completion closed, and removes the next Occurrence it created), restoring the deleted Tasks,
+ * or moving the Task back to its old Custom Order position.
+ *
  * Created by a page from its `load` data and shared with the components below it through
- * context ({@link setTaskStore} / {@link getTaskStore}).
+ * context ({@link setTaskStore} / {@link getTaskStore}). The page calls {@link TaskStore.dispose}
+ * when it goes away, which withdraws its Undo.
  */
 import { getContext, setContext } from 'svelte';
 import { invalidate } from '$app/navigation';
@@ -42,14 +48,40 @@ function byId(tasks: SerializedTask[]): ById {
 export class TaskStore {
 	readonly #source: () => SerializedTask[];
 	readonly #toasts: Toasts;
+	readonly #listName: (id: string) => string | undefined;
+	/** The toast offering Undo for this store's latest action, if any. */
+	#undoToast: number | undefined;
 	/** The page data. Only a new array (navigation, invalidation) resets the local copy. */
 	#loaded = $derived.by(() => this.#source());
 	/** Local copy; overwritten optimistically and by server answers. */
 	#tasks = $derived<ById>(byId(this.#loaded));
 
-	constructor(source: () => SerializedTask[], toasts: Toasts) {
+	constructor(
+		source: () => SerializedTask[],
+		toasts: Toasts,
+		listName: (id: string) => string | undefined = () => undefined
+	) {
 		this.#source = source;
 		this.#toasts = toasts;
+		this.#listName = listName;
+	}
+
+	/** Withdraws the Undo on offer: the page it would change is gone. */
+	dispose(): void {
+		if (this.#undoToast !== undefined) this.#toasts.dismiss(this.#undoToast);
+		this.#undoToast = undefined;
+	}
+
+	/**
+	 * Shows an Undo toast for an action (replacing any earlier one, which becomes final), and
+	 * withdraws it if the action's request fails.
+	 */
+	#offerUndo(message: string, done: Promise<boolean>, undo: () => void): void {
+		const toast = this.#toasts.undoable(message, undo);
+		this.#undoToast = toast;
+		void done.then((ok) => {
+			if (!ok) this.#toasts.dismiss(toast);
+		});
 	}
 
 	/** Every Task on screen, in Custom Order. */
@@ -175,10 +207,14 @@ export class TaskStore {
 	/**
 	 * Completes a Task and, with it, its open Subtasks (the cascade in `#lib/domain/subtasks`).
 	 * The next Occurrence of a recurring Task is created by the server and shows up with its answer.
+	 * Undo reopens it, which the server turns back into exactly the state before.
 	 */
 	complete(id: string): Promise<boolean> {
-		this.#applyCompletion(completionChanges(Object.values(this.#tasks), id, timestamp()));
-		return this.#send('complete the task', () => api.completeTask(id, browserTimeZone()));
+		const changes = completionChanges(Object.values(this.#tasks), id, timestamp());
+		this.#applyCompletion(changes);
+		const done = this.#send('complete the task', () => api.completeTask(id, browserTimeZone()));
+		if (changes.length > 0) this.#offerUndo('Task completed', done, () => void this.reopen(id));
+		return done;
 	}
 
 	/**
@@ -191,12 +227,30 @@ export class TaskStore {
 		return this.#send('reopen the task', () => api.reopenTask(id));
 	}
 
+	/**
+	 * Deletes a Task and its Subtasks. Undo restores them as the server deleted them (same ids,
+	 * positions, dates, completion and everything else).
+	 */
 	remove(id: string): Promise<boolean> {
-		this.apply({
-			upserted: [],
-			deleted: [id, ...this.all.filter((task) => task.parentId === id).map((task) => task.id)]
+		const local = [this.#tasks[id], ...this.all.filter((task) => task.parentId === id)].filter(
+			(task) => task !== undefined
+		);
+		this.apply({ upserted: [], deleted: local.map((task) => task.id) });
+		let removed: SerializedTask[] | undefined;
+		const done = this.#send('delete the task', async () => {
+			const answer = await api.deleteTask(id);
+			removed = answer.removed;
+			return answer;
 		});
-		return this.#send('delete the task', () => api.deleteTask(id));
+		this.#offerUndo('Task deleted', done, () => {
+			this.apply({ upserted: local, deleted: [] });
+			// Queued after the delete, so its answer (with `removed`) is in by then.
+			void this.#send('restore the task', () => {
+				if (!removed) throw new Error('The task wasn’t deleted');
+				return api.restoreTasks(removed);
+			});
+		});
+		return done;
 	}
 
 	/** Why Task `id` can't make `move` (see `moveError`), or `null` if it can. */
@@ -213,9 +267,25 @@ export class TaskStore {
 	 * Moves a Task in Custom Order: among its siblings, under another Task, out of its parent, or
 	 * to another List with its Subtasks (the rules in `#lib/domain/moves`). A move the rules don't
 	 * allow is refused without a request and resolves to `false`; a move to where the Task already
-	 * is sends nothing.
+	 * is sends nothing. A move to another List offers Undo, which moves the Task back to its old
+	 * parent and Custom Order position.
 	 */
 	move(id: string, move: TaskMove): Promise<boolean> {
+		const task = this.#tasks[id];
+		const done = this.#move(id, move);
+		if (task && task.listId !== move.listId) {
+			const back = { listId: task.listId, parentId: task.parentId, position: task.position };
+			const name = this.#listName(move.listId);
+			this.#offerUndo(name ? `Moved to ${name}` : 'Task moved', done, () => {
+				const problem = this.moveError(id, back);
+				if (problem) this.#toasts.failed('undo the move', new Error(problem));
+				else void this.#move(id, back);
+			});
+		}
+		return done;
+	}
+
+	#move(id: string, move: TaskMove): Promise<boolean> {
 		const all = Object.values(this.#tasks);
 		if (moveError(all, id, move)) return Promise.resolve(false);
 		const changes = moveChanges(all, id, move);

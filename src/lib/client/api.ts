@@ -8,7 +8,7 @@ import type { SerializedList, SortMode } from '#lib/domain/lists.js';
 import type { SerializedDueDate, SerializedPlannedDate } from '#lib/domain/dates.js';
 import type { TaskMove } from '#lib/domain/moves.js';
 import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
-import type { Priority, TaskChanges } from '#lib/domain/tasks.js';
+import type { Priority, SerializedTask, TaskChanges } from '#lib/domain/tasks.js';
 
 export class ApiError extends Error {
 	constructor(
@@ -93,7 +93,12 @@ export const api = {
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/complete', { id }), { timeZone }),
 	reopenTask: (id: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/reopen', { id }), {}),
-	deleteTask: (id: string) => request<TaskChanges>('DELETE', task(id)),
+	/** `removed` holds the deleted Tasks as they were, for {@link api.restoreTasks}. */
+	deleteTask: (id: string) =>
+		request<TaskChanges & { removed: SerializedTask[] }>('DELETE', task(id)),
+	/** Undo for `deleteTask`: puts its `removed` Tasks back. */
+	restoreTasks: (tasks: SerializedTask[]) =>
+		request<TaskChanges>('POST', resolve('/api/tasks/restore'), { tasks }),
 	moveTask: (id: string, move: TaskMove) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/move', { id }), move),
 
