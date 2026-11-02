@@ -58,7 +58,7 @@ export const openTitles = (page: Page, list: string): Locator =>
 export const subtaskTitles = (page: Page, list: string, parent: string): Locator =>
 	column(page, list)
 		.getByRole('list', { name: `Subtasks of ${parent}`, exact: true })
-		.getByRole('button');
+		.locator(':scope > li > .body > .open');
 
 /** Adds a Subtask through the open detail panel's "Add subtask" field. */
 export async function addSubtask(page: Page, title: string): Promise<void> {

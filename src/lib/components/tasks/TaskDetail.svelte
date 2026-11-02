@@ -10,6 +10,8 @@
 	} from '#lib/domain/tasks.js';
 	import AddTaskRow from './AddTaskRow.svelte';
 	import TaskRow from './TaskRow.svelte';
+	import PriorityField from './PriorityField.svelte';
+	import TaskDateFields from './TaskDateFields.svelte';
 
 	/**
 	 * The Task detail panel: a side panel on wide screens, a full-screen sheet on narrow ones.
@@ -206,7 +208,13 @@
 			{/if}
 		</div>
 
-		<!-- #8 (dates), #9 (Priority) and #16 (Recurrence) add their fields here. -->
+		<TaskDateFields {task} />
+		<PriorityField
+			value={task.priority}
+			onchange={(priority) => store.update(task.id, { priority })}
+		/>
+
+		<!-- #16 (Recurrence) adds its fields here. -->
 
 		{#if task.parentId === null}
 			<section class="subtasks" aria-labelledby="{id}-subtasks">

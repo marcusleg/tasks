@@ -43,7 +43,9 @@ test('add Subtasks in the detail panel: they show indented under their parent, i
 	await addSubtask(page, 'Candles');
 
 	// New Subtasks go to the bottom, like a checklist.
-	const inPanel = panel.getByRole('list', { name: 'Subtasks' }).getByRole('button');
+	const inPanel = panel
+		.getByRole('list', { name: 'Subtasks' })
+		.locator(':scope > li > .body > .open');
 	await expect(inPanel).toHaveText(['Cake', 'Candles']);
 	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Cake', 'Candles']);
 	await expect(openTitles(page, LIST)).toHaveText(['Party']);
