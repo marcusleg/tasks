@@ -8,9 +8,6 @@ test.beforeEach(async ({ page }) => {
 	await loginAs(page);
 });
 
-const SHOTS =
-	'/tmp/claude-1000/-home-marcus-git-github-com-marcusleg-tasks/4cdbec18-0587-4ea1-a88f-487307ae1923/scratchpad/shots';
-
 const group = (page: Page, name: 'High' | 'Medium' | 'Low') =>
 	page.getByRole('region', { name, exact: true });
 const rows = (page: Page, name: 'High' | 'Medium' | 'Low') =>
@@ -62,11 +59,6 @@ test('shows open Tasks by Priority with their List names and breadcrumbs', async
 	await expect(row(page, 'Delta')).toContainText('Gamma ›');
 	await expect(page.getByRole('button', { name: 'Plain', exact: true })).toHaveCount(0);
 
-	for (const theme of ['light', 'dark'] as const) {
-		await page.emulateMedia({ colorScheme: theme });
-		await page.screenshot({ path: `${SHOTS}/issue13-1280-${theme}.png` });
-	}
-
 	// Changing Priority moves the row.
 	await setPriority(page, 'Beta', 'Low', 'Medium');
 	await expect(rows(page, 'Medium').locator('.open')).toHaveText(['Beta', 'Delta']);
@@ -106,10 +98,6 @@ test('shows one column at a time on a narrow screen', async ({ page }) => {
 	await expect(group(page, 'High')).toBeVisible();
 	await expect(group(page, 'Low')).toBeHidden();
 	await expect(rows(page, 'High').locator('.open')).toHaveText(['High one']);
-	for (const theme of ['light', 'dark'] as const) {
-		await page.emulateMedia({ colorScheme: theme });
-		await page.screenshot({ path: `${SHOTS}/issue13-360-${theme}.png` });
-	}
 
 	await switcher.selectOption('low');
 	await expect(group(page, 'Low')).toBeVisible();
