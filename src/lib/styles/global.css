@@ -1,0 +1,163 @@
+/*
+ * Design tokens and base styles. Components use only these custom properties;
+ * never hard-code colours. Dark is the default; light applies for
+ * [data-theme='light'] (or, before the theme script runs / without JS, when the
+ * OS prefers light).
+ */
+
+:root {
+	color-scheme: dark;
+
+	--bg: #121310;
+	--surface: #1a1b15;
+	--surface-hover: #20211a;
+	--fg: #f8f8f2;
+	--muted: #8c8875;
+	--border: #3a3a30;
+	--accent-purple: #ae81ff;
+	--accent-pink: #f92672;
+	--accent-orange: #fd971f;
+	--accent-cyan: #66d9ef;
+	--accent-green: #a6e22e;
+	/* Text colour on top of a solid accent background. */
+	--on-accent: #121310;
+	--overlay: rgb(0 0 0 / 0.5);
+
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-5: 1.5rem;
+	--space-6: 2rem;
+
+	--radius-sm: 0.25rem;
+	--radius-md: 0.5rem;
+
+	--font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+	--header-height: 3.5rem;
+	--sidebar-width: 15rem;
+}
+
+:root[data-theme='light'] {
+	color-scheme: light;
+
+	--bg: #f5f3f0;
+	--surface: #eceae6;
+	--surface-hover: #e3e0db;
+	--fg: #2d2b28;
+	--muted: #6b6555;
+	--border: #d4d0ca;
+	--accent-purple: #8d00ff;
+	--accent-pink: #d9005e;
+	--accent-orange: #a35d00;
+	--accent-cyan: #00798a;
+	--accent-green: #477210;
+	--on-accent: #ffffff;
+	--overlay: rgb(0 0 0 / 0.35);
+}
+
+@media (prefers-color-scheme: light) {
+	:root:not([data-theme]) {
+		color-scheme: light;
+
+		--bg: #f5f3f0;
+		--surface: #eceae6;
+		--surface-hover: #e3e0db;
+		--fg: #2d2b28;
+		--muted: #6b6555;
+		--border: #d4d0ca;
+		--accent-purple: #8d00ff;
+		--accent-pink: #d9005e;
+		--accent-orange: #a35d00;
+		--accent-cyan: #00798a;
+		--accent-green: #477210;
+		--on-accent: #ffffff;
+		--overlay: rgb(0 0 0 / 0.35);
+	}
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font-sans);
+	font-size: 1rem;
+	line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+p {
+	margin: 0;
+}
+
+h1 {
+	font-size: 1.5rem;
+	line-height: 1.25;
+}
+
+h2 {
+	font-size: 1.125rem;
+}
+
+code,
+kbd,
+pre {
+	font-family: var(--font-mono);
+}
+
+a {
+	color: var(--accent-purple);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+a:hover {
+	color: var(--accent-pink);
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+button {
+	cursor: pointer;
+}
+
+img,
+svg {
+	display: block;
+	max-width: 100%;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent-pink);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+	}
+}

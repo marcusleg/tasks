@@ -4,6 +4,19 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<script>
+			// Keep in sync with src/lib/theme.ts. Runs before first paint so there is no flash.
+			(function () {
+				var pref = 'system';
+				try {
+					var stored = localStorage.getItem('theme');
+					if (stored === 'light' || stored === 'dark') pref = stored;
+				} catch (e) {}
+				var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+				document.documentElement.dataset.theme =
+					pref === 'system' ? (dark ? 'dark' : 'light') : pref;
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
