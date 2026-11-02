@@ -11,10 +11,14 @@ import { Temporal } from 'temporal-polyfill';
 import { and, asc, eq, inArray, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
 import type { DueDate, PlannedDate } from '#lib/domain/dates.js';
 import {
+	byCustomOrder,
 	parseDescription,
 	parseTitle,
+	serializeSeriesTemplate,
 	serializeTask,
 	type Priority,
+	type SeriesTemplate,
+	type SubtaskTemplate,
 	type Task,
 	type TaskChanges
 } from '#lib/domain/tasks.js';
@@ -33,9 +37,13 @@ import {
 	hasDate,
 	NEEDS_A_DATE,
 	nextOccurrenceStep,
+	reanchorRule,
 	RECURRENCE_CONFLICT_MESSAGES,
 	recurrenceConflict,
-	withDrivingDefaults
+	seriesTemplateOf,
+	withDrivingDefaults,
+	type ApplyTo,
+	type TemplateFields
 } from '#lib/domain/recurring-tasks.js';
 import { dueColumns, plannedColumns, recurrenceColumn, taskColumns, toTask } from './db/mapping.js';
 import { tasks } from './db/schema.js';
@@ -126,22 +134,35 @@ export interface NewTask {
  * Creates a Task at the top of its List's Custom Order, or a Subtask at the bottom of its parent's
  * Subtasks. The parent must be an open top-level Task (see `nestingError`).
  * Returns `undefined` when the List or parent isn't the User's. Throws `InvalidInputError`.
+ *
+ * A Subtask of a recurring Task is added to This Occurrence only (`applyTo` "occurrence") or to
+ * this and all future ones (the default; see {@link updateTask}).
  */
-export function createTask(scope: UserScope, input: NewTask): TaskChangeSet | undefined {
+export function createTask(
+	scope: UserScope,
+	input: NewTask,
+	applyTo: ApplyTo = 'future'
+): TaskChangeSet | undefined {
 	if (input.id !== undefined && !isId(input.id)) throw new InvalidInputError('Invalid id');
 	const title = parseTitle(input.title);
 	const description = parseDescription(input.description ?? '');
 	if (!getList(scope, input.listId)) return undefined;
 
 	const parentId = input.parentId ?? null;
+	let recurringParent: Task | undefined;
 	if (parentId !== null) {
 		const parent = getTask(scope, parentId);
 		if (!parent || parent.listId !== input.listId) return undefined;
 		const problem = nestingError(parent);
 		if (problem) throw new InvalidInputError(problem);
+		if (parent.recurrence) recurringParent = parent;
 	}
 
 	return scope.db.transaction(() => {
+		const templates =
+			recurringParent && applyTo === 'occurrence'
+				? keepSubtaskTemplate(scope, recurringParent)
+				: [];
 		const row = scope.db
 			.insert(tasks)
 			.values({
@@ -156,7 +177,16 @@ export function createTask(scope: UserScope, input: NewTask): TaskChangeSet | un
 			})
 			.returning()
 			.get();
-		return changeSet([toTask(row), ...markChanged(scope, parentId)]);
+		const task = toTask(row);
+		if (recurringParent && applyTo === 'future') {
+			templates.push(
+				...editSubtaskTemplate(scope, recurringParent, (subtasks) => [
+					...subtasks,
+					subtaskTemplate(task)
+				])
+			);
+		}
+		return changeSet([task, ...templates, ...markChanged(scope, parentId)]);
 	});
 }
 
@@ -208,16 +238,30 @@ function dateAndPriorityColumns(
 	};
 }
 
-/** Changes a Task's Title, Description, dates or Priority. `undefined` if it isn't the User's. */
+/**
+ * Changes a Task's Title, Description, dates, Priority or Recurrence. `undefined` if it isn't the
+ * User's.
+ *
+ * `applyTo` says which Occurrences a field change reaches (CONTEXT.md → Occurrence; the default
+ * is "This and all future", which is also all there is for a non-recurring Task):
+ * - The current Occurrence of a recurring Task: "occurrence" changes it alone; the series template
+ *   keeps what the next Occurrence is generated from (see {@link templateColumns}). "future"
+ *   changes it and the template; a date change also moves the rule's weekday or month day.
+ * - A Subtask of a recurring Task: "occurrence" first keeps the parent's Subtasks as they were in
+ *   its template; "future" also changes the Subtask's entry in that template, if there is one.
+ * A change of the Recurrence itself always applies to this and all future Occurrences.
+ */
 export function updateTask(
 	scope: UserScope,
 	id: string,
-	patch: TaskPatch
+	patch: TaskPatch,
+	applyTo: ApplyTo = 'future'
 ): TaskChangeSet | undefined {
 	const values: Partial<typeof tasks.$inferInsert> = dateAndPriorityColumns(patch);
 	if (patch.title !== undefined) values.title = parseTitle(patch.title);
 	if (patch.description !== undefined) values.description = parseDescription(patch.description);
-	if (Object.keys(values).length === 0 && patch.recurrence === undefined) {
+	const fieldsChange = Object.keys(values).length > 0;
+	if (!fieldsChange && patch.recurrence === undefined) {
 		const task = getTask(scope, id);
 		return task && { upserted: [task], deleted: [] };
 	}
@@ -225,17 +269,159 @@ export function updateTask(
 	return scope.db.transaction(() => {
 		const task = getTask(scope, id);
 		if (!task) return undefined;
+		const upserted: Task[] = [];
 		Object.assign(values, recurrenceColumns(scope, task, patch));
+		const parent = recurringParent(scope, task);
+		if (fieldsChange) {
+			Object.assign(values, templateColumns(task, patch, applyTo));
+			if (parent && applyTo === 'occurrence') upserted.push(...keepSubtaskTemplate(scope, parent));
+		}
 		// An edited Occurrence no longer gives way to the one before it on Reopen.
 		values.changedSinceGenerated = true;
-		const row = scope.db
+		const row = toTask(
+			scope.db
+				.update(tasks)
+				.set(values)
+				.where(owned(scope, eq(tasks.id, id)))
+				.returning()
+				.get()
+		);
+		if (parent && fieldsChange && applyTo === 'future') {
+			upserted.push(
+				...editSubtaskTemplate(scope, parent, (subtasks) =>
+					subtasks.map((entry) => (entry.sourceId === row.id ? subtaskTemplate(row) : entry))
+				)
+			);
+		}
+		return changeSet([row, ...upserted, ...markChanged(scope, task.parentId)]);
+	});
+}
+
+/** The new values of the template fields after `patch`. */
+function patched(task: Task, patch: TaskPatch): TemplateFields {
+	return {
+		title: patch.title === undefined ? task.title : parseTitle(patch.title),
+		description:
+			patch.description === undefined ? task.description : parseDescription(patch.description),
+		priority: patch.priority === undefined ? task.priority : patch.priority,
+		planned: patch.planned ?? task.planned,
+		due: patch.due ?? task.due
+	};
+}
+
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The template to store for a Task with these current values: `null` when it holds nothing the
+ * current Occurrence doesn't (same fields, no Subtask template), so the Occurrence is the template
+ * again.
+ */
+function normalizedTemplate(template: SeriesTemplate | null, current: TemplateFields) {
+	if (!template) return null;
+	const same =
+		!template.subtasks &&
+		sameJson(
+			serializeSeriesTemplate(template),
+			serializeSeriesTemplate(seriesTemplateOf({ ...current, seriesTemplate: null }))
+		);
+	return same ? null : serializeSeriesTemplate(template);
+}
+
+/**
+ * The series template (and Recurrence) columns for a field change to a recurring Task's current
+ * Occurrence. "occurrence" keeps the template as the Occurrence was before the change (taking a
+ * copy if the Occurrence was the template). "future" applies the change to the template as well;
+ * a date change makes this Occurrence's dates the template's and moves the rule with the driving
+ * date (`reanchorRule`), unless the patch sets a new rule itself. Other Tasks: no columns.
+ */
+function templateColumns(
+	task: Task,
+	patch: TaskPatch,
+	applyTo: ApplyTo
+): Partial<typeof tasks.$inferInsert> {
+	if (!task.recurrence || task.completedAt || patch.recurrence === null) return {};
+	const current = patched(task, patch);
+	if (applyTo === 'occurrence') {
+		return { seriesTemplate: normalizedTemplate(seriesTemplateOf(task), current) };
+	}
+	const datesChange = patch.planned !== undefined || patch.due !== undefined;
+	const template = task.seriesTemplate && {
+		...task.seriesTemplate,
+		...(patch.title !== undefined && { title: current.title }),
+		...(patch.description !== undefined && { description: current.description }),
+		...(patch.priority !== undefined && { priority: current.priority }),
+		...(datesChange && { planned: current.planned, due: current.due })
+	};
+	const columns: Partial<typeof tasks.$inferInsert> = {
+		seriesTemplate: normalizedTemplate(template, current)
+	};
+	if (datesChange && patch.recurrence === undefined && hasDate(current)) {
+		const rule = reanchorRule(task.recurrence, seriesTemplateOf(task), current);
+		Object.assign(columns, recurrenceColumn(rule));
+	}
+	return columns;
+}
+
+/** The open recurring parent of a Subtask, whose template its changes may reach. */
+function recurringParent(scope: UserScope, task: Task): Task | undefined {
+	if (task.parentId === null) return undefined;
+	const parent = getTask(scope, task.parentId);
+	return parent?.recurrence && !parent.completedAt ? parent : undefined;
+}
+
+function subtaskTemplate(subtask: Task): SubtaskTemplate {
+	return {
+		sourceId: subtask.id,
+		title: subtask.title,
+		description: subtask.description,
+		priority: subtask.priority,
+		planned: subtask.planned,
+		due: subtask.due,
+		position: subtask.position
+	};
+}
+
+function writeTemplate(scope: UserScope, id: string, template: SeriesTemplate): Task {
+	return toTask(
+		scope.db
 			.update(tasks)
-			.set(values)
+			.set({ seriesTemplate: serializeSeriesTemplate(template) })
 			.where(owned(scope, eq(tasks.id, id)))
 			.returning()
-			.get();
-		return changeSet([toTask(row), ...markChanged(scope, task.parentId)]);
-	});
+			.get()
+	);
+}
+
+/**
+ * Before a "This Occurrence" change to a recurring Task's Subtasks: makes sure its template holds
+ * the Subtasks as they are now, so future Occurrences get these rather than the changed ones.
+ * Returns the parent if its template changed.
+ */
+function keepSubtaskTemplate(scope: UserScope, parent: Task): Task[] {
+	if (parent.seriesTemplate?.subtasks) return [];
+	const subtasks = scope.db
+		.select()
+		.from(tasks)
+		.where(owned(scope, eq(tasks.parentId, parent.id)))
+		.all()
+		.map(toTask)
+		.sort(byCustomOrder)
+		.map(subtaskTemplate);
+	return [writeTemplate(scope, parent.id, { ...seriesTemplateOf(parent), subtasks })];
+}
+
+/**
+ * After a "This and all future" change to a recurring Task's Subtasks: applies it to the Subtask
+ * template, if the parent has one (otherwise the next Occurrence copies the Subtasks anyway).
+ */
+function editSubtaskTemplate(
+	scope: UserScope,
+	parent: Task,
+	edit: (subtasks: SubtaskTemplate[]) => SubtaskTemplate[]
+): Task[] {
+	const template = getTask(scope, parent.id)?.seriesTemplate;
+	if (!template?.subtasks) return [];
+	return [writeTemplate(scope, parent.id, { ...template, subtasks: edit(template.subtasks) })];
 }
 
 const COMPLETED_CANT_START_RECURRENCE =
@@ -251,16 +437,22 @@ function recurrenceColumns(
 	const recurs = patch.recurrence === undefined ? task.recurrence !== null : !!patch.recurrence;
 	if (recurs && !hasDate(dates)) throw new InvalidInputError(NEEDS_A_DATE);
 	if (patch.recurrence === undefined) return {};
-	if (patch.recurrence === null) return { recurrence: null, seriesId: null };
+	if (patch.recurrence === null) return { recurrence: null, seriesId: null, seriesTemplate: null };
 	// The next Occurrence is created on completion, so a Completed Task can't start a series.
 	if (task.completedAt) throw new InvalidInputError(COMPLETED_CANT_START_RECURRENCE);
 	const conflict = recurrenceConflict(task, familyOf(scope, task));
 	if (conflict) throw new InvalidInputError(RECURRENCE_CONFLICT_MESSAGES[conflict]);
-	const rule = withDrivingDefaults(patch.recurrence, dates);
+	const newSeries = task.recurrence === null || task.seriesId === null;
+	// A moved Occurrence's own dates aren't on the rule; the template's are.
+	const anchor =
+		task.seriesTemplate && !newSeries && patch.planned === undefined && patch.due === undefined
+			? task.seriesTemplate
+			: dates;
+	const rule = withDrivingDefaults(patch.recurrence, anchor);
 	return {
 		...recurrenceColumn(rule),
-		...(task.recurrence === null || task.seriesId === null
-			? { seriesId: crypto.randomUUID(), occurrencesSoFar: 1 }
+		...(newSeries
+			? { seriesId: crypto.randomUUID(), occurrencesSoFar: 1, seriesTemplate: null }
 			: {})
 	};
 }
@@ -340,26 +532,35 @@ function completionInstant(task: Task, now: Date, timeZone: string | undefined) 
 }
 
 /**
- * Creates the Occurrence after a just-Completed one, unless its Recurrence has ended: an open
- * Task with the same fields and Recurrence, in the same List and parent, placed right after the
- * Completed one in Custom Order so it takes its place among the open Tasks. Its Subtasks are
- * copies of the Completed one's, reopened, with their dates shifted by the same number of days as
- * the Occurrence's own step. Returns the created Tasks.
+ * Creates the Occurrence after a just-Completed (or skipped) one, unless its Recurrence has ended:
+ * an open Task with the Recurrence, in the same List and parent, placed right after the previous
+ * one in Custom Order so it takes its place among the open Tasks.
+ *
+ * It is generated from the series template (`seriesTemplateOf`): its Title, Description and
+ * Priority, and its dates stepped from the template's. So an Occurrence changed with "This
+ * Occurrence" only doesn't pass the change on. Its Subtasks come from the template's Subtasks, or
+ * are copies of the previous Occurrence's; either way open, with their dates shifted by the same
+ * number of days as the Occurrence's own step. Returns the created Tasks.
+ *
+ * `generatedFromTaskId` is the Occurrence whose completion created it (#16), `null` for a skip.
  */
 function createNextOccurrence(
 	scope: UserScope,
-	completed: Task & { recurrence: RecurrenceRule },
+	previous: Task & { recurrence: RecurrenceRule },
 	family: Task[],
 	now: Date,
-	timeZone: string | undefined
+	timeZone: string | undefined,
+	generatedFromTaskId: string | null = previous.id
 ): Task[] {
-	if (!hasDate(completed)) return [];
-	const step = nextOccurrenceStep(completed, completionInstant(completed, now, timeZone));
+	const { subtasks: subtaskTemplates, ...template } = seriesTemplateOf(previous);
+	const source = { ...previous, ...template };
+	if (!hasDate(source)) return [];
+	const step = nextOccurrenceStep(source, completionInstant(source, now, timeZone));
 	if (!step) return [];
 
-	const after = siblingPositions(scope, completed.listId, completed.parentId)
+	const after = siblingPositions(scope, previous.listId, previous.parentId)
 		.map((sibling) => sibling.position)
-		.filter((position) => comparePositions(position, completed.position) > 0)
+		.filter((position) => comparePositions(position, previous.position) > 0)
 		.sort(comparePositions)[0];
 	const insert = (task: Task) =>
 		toTask(
@@ -369,41 +570,50 @@ function createNextOccurrence(
 					...taskColumns(task),
 					id: crypto.randomUUID(),
 					userId: scope.userId,
-					listId: completed.listId
+					listId: previous.listId
 				})
 				.returning()
 				.get()
 		);
 	const next = insert({
-		...completed,
-		position: generateKeyBetween(completed.position, after ?? null),
+		...source,
+		position: generateKeyBetween(previous.position, after ?? null),
 		planned: step.planned,
 		due: step.due,
 		completedAt: null,
 		completedByCascade: false,
-		occurrencesSoFar: completed.occurrencesSoFar + 1,
-		generatedFromTaskId: completed.id,
-		changedSinceGenerated: false
+		occurrencesSoFar: previous.occurrencesSoFar + 1,
+		generatedFromTaskId,
+		changedSinceGenerated: false,
+		seriesTemplate: null
 	});
-	const subtasks = family
-		.filter((task) => task.parentId === completed.id)
-		.map((subtask) =>
-			insert({
-				...subtask,
-				parentId: next.id,
-				planned: shiftByDays(subtask.planned, step.days),
-				due: shiftByDays(subtask.due, step.days),
-				completedAt: null,
-				completedByCascade: false,
-				// A recurring parent's Subtasks don't recur (exclusivity), not even reopened copies.
-				recurrence: null,
-				seriesId: null,
-				occurrencesSoFar: 1,
-				generatedFromTaskId: null,
-				changedSinceGenerated: false,
-				seriesTemplate: null
-			})
-		);
+	const subtaskSources =
+		subtaskTemplates?.map((entry) => ({
+			...next,
+			title: entry.title,
+			description: entry.description,
+			priority: entry.priority,
+			planned: entry.planned,
+			due: entry.due,
+			position: entry.position
+		})) ?? family.filter((task) => task.parentId === previous.id);
+	const subtasks = subtaskSources.map((subtask) =>
+		insert({
+			...subtask,
+			parentId: next.id,
+			planned: shiftByDays(subtask.planned, step.days),
+			due: shiftByDays(subtask.due, step.days),
+			completedAt: null,
+			completedByCascade: false,
+			// A recurring parent's Subtasks don't recur (exclusivity), not even reopened copies.
+			recurrence: null,
+			seriesId: null,
+			occurrencesSoFar: 1,
+			generatedFromTaskId: null,
+			changedSinceGenerated: false,
+			seriesTemplate: null
+		})
+	);
 	return [next, ...subtasks];
 }
 
@@ -454,6 +664,16 @@ export function moveTask(scope: UserScope, id: string, move: TaskMove): TaskChan
 			id,
 			move
 		);
+		// A Subtask leaving or joining a recurring Task changes This Occurrence only.
+		const templates =
+			changes[0].parentId === task.parentId
+				? []
+				: [task.parentId, changes[0].parentId].flatMap((parentId) => {
+						const parent = parentId === null ? undefined : getTask(scope, parentId);
+						return parent?.recurrence && !parent.completedAt
+							? keepSubtaskTemplate(scope, parent)
+							: [];
+					});
 		const upserted = changes.map(({ id, ...values }) =>
 			toTask(
 				tx
@@ -464,6 +684,7 @@ export function moveTask(scope: UserScope, id: string, move: TaskMove): TaskChan
 					.get()
 			)
 		);
+		upserted.unshift(...templates);
 		const [moved] = changes;
 		const actuallyMoved =
 			moved.listId !== task.listId ||
@@ -500,7 +721,7 @@ function reopenOccurrence(scope: UserScope, reopened: Task): TaskChangeSet {
 	}
 	const oneOff = scope.db
 		.update(tasks)
-		.set({ recurrence: null, seriesId: null })
+		.set({ recurrence: null, seriesId: null, seriesTemplate: null })
 		.where(owned(scope, eq(tasks.id, reopened.id)))
 		.returning()
 		.get();
@@ -531,8 +752,23 @@ export interface DeletedTasks extends TaskChangeSet {
 /**
  * Deletes a Task and its Subtasks, and returns them as they were (for `restoreTasks`).
  * `undefined` if the Task isn't the User's.
+ *
+ * For the current Occurrence of a recurring Task, `applyTo` "occurrence" skips it: it is deleted
+ * and the next Occurrence takes its place (see {@link createNextOccurrence}; no Completed entry,
+ * and nothing once the Recurrence has ended). A completion-anchored rule counts from the skip
+ * (`now`, read like a completion in `timeZone`). "future" (the default) deletes it, which ends
+ * the Recurrence: future Occurrences only exist as projections of the current one.
+ *
+ * A Subtask of a recurring Task is deleted from This Occurrence only ("occurrence") or from all
+ * future ones too ("future"; see {@link updateTask}).
  */
-export function deleteTask(scope: UserScope, id: string): DeletedTasks | undefined {
+export function deleteTask(
+	scope: UserScope,
+	id: string,
+	applyTo: ApplyTo = 'future',
+	now: Date = new Date(),
+	timeZone?: string
+): DeletedTasks | undefined {
 	return scope.db.transaction((tx) => {
 		const task = getTask(scope, id);
 		if (!task) return undefined;
@@ -544,9 +780,25 @@ export function deleteTask(scope: UserScope, id: string): DeletedTasks | undefin
 			.orderBy(asc(tasks.position), asc(tasks.id))
 			.all()
 			.map(toTask);
+		const upserted: Task[] = [];
+		const parent = recurringParent(scope, task);
+		if (parent && applyTo === 'occurrence') upserted.push(...keepSubtaskTemplate(scope, parent));
+		if (task.recurrence && !task.completedAt && applyTo === 'occurrence') {
+			const recurring = { ...task, recurrence: task.recurrence };
+			upserted.push(
+				...createNextOccurrence(scope, recurring, [task, ...subtasks], now, timeZone, null)
+			);
+		}
 		const deleted = deleteWithSubtasks(scope, id);
+		if (parent && applyTo === 'future') {
+			upserted.push(
+				...editSubtaskTemplate(scope, parent, (entries) =>
+					entries.filter((entry) => entry.sourceId !== id)
+				)
+			);
+		}
 		const removed = [task, ...subtasks];
-		return { ...changeSet(markChanged(scope, task.parentId), deleted), removed };
+		return { ...changeSet([...upserted, ...markChanged(scope, task.parentId)], deleted), removed };
 	});
 }
 

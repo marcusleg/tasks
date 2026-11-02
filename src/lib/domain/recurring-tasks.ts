@@ -4,7 +4,14 @@
  * the browser (the Recurrence editor and row icon).
  */
 import type { Temporal } from 'temporal-polyfill';
-import { localDate, type DateOnly, type TimedDate } from './dates';
+import {
+	localDate,
+	serializeDueDate,
+	serializePlannedDate,
+	type DateOnly,
+	type TimedDate
+} from './dates';
+import type { SeriesTemplate, Task } from './tasks';
 import {
 	nextOccurrence,
 	stepDriver,
@@ -14,6 +21,34 @@ import {
 } from './recurrence';
 
 export const NEEDS_A_DATE = 'A recurring Task needs a Planned Date or a Due Date';
+
+/**
+ * Which Occurrences an edit or a delete of a recurring Task applies to (CONTEXT.md → Occurrence):
+ * "This Occurrence" only, or "This and all future" ones.
+ */
+export type ApplyTo = 'occurrence' | 'future';
+export const APPLY_TO: readonly ApplyTo[] = ['occurrence', 'future'];
+
+/** The fields of a Task that a {@link SeriesTemplate} holds, besides the Subtasks. */
+export type TemplateFields = Pick<Task, 'title' | 'description' | 'priority' | 'planned' | 'due'>;
+
+/**
+ * What the series makes of a Task's current Occurrence: its template, or the Task's own values
+ * while it is itself the template.
+ */
+export function seriesTemplateOf(
+	task: TemplateFields & Pick<Task, 'seriesTemplate'>
+): SeriesTemplate {
+	return (
+		task.seriesTemplate ?? {
+			title: task.title,
+			description: task.description,
+			priority: task.priority,
+			planned: task.planned,
+			due: task.due
+		}
+	);
+}
 
 /** Whether a Task has a Planned Date or a Due Date, which a recurring Task needs. */
 export function hasDate({ planned, due }: OccurrenceDates): boolean {
@@ -76,6 +111,55 @@ export function withDrivingDefaults(rule: RecurrenceRule, dates: OccurrenceDates
 		case 'monthly':
 		case 'yearly':
 			return rule.monthDay ? rule : { ...rule, monthDay: driver.day };
+		default:
+			return rule;
+	}
+}
+
+/**
+ * Whether the current Occurrence differs from what its series makes of it (its template) in what
+ * a calendar shows: its dates, which then no longer lie on the rule after a "This Occurrence"
+ * move, or its Title or Description. Calendar Links publish a detached Occurrence on its own,
+ * followed by the series from the next Occurrence (`CalendarRecurrence.detached`).
+ */
+export function isDetached(task: TemplateFields & Pick<Task, 'seriesTemplate'>): boolean {
+	const template = task.seriesTemplate;
+	if (!template) return false;
+	return (
+		task.title !== template.title ||
+		task.description !== template.description ||
+		JSON.stringify(serializePlannedDate(task.planned)) !==
+			JSON.stringify(serializePlannedDate(template.planned)) ||
+		JSON.stringify(serializeDueDate(task.due)) !== JSON.stringify(serializeDueDate(template.due))
+	);
+}
+
+/**
+ * The rule after a "This and all future" date change moved the series from `from` (where the
+ * current Occurrence lies on the rule) to `to`: the weekday of the driving date is replaced by the
+ * new one in a weekly rule, and the month day of a monthly or yearly rule becomes the new driving
+ * date's day. Daily rules, and moves that keep the driving date, keep the rule as it is. A weekly
+ * rule that doesn't list the old weekday is kept too: the moved date wasn't on it to begin with.
+ */
+export function reanchorRule(
+	rule: RecurrenceRule,
+	from: OccurrenceDates,
+	to: OccurrenceDates
+): RecurrenceRule {
+	const before = localDate(from[stepDriver(from)] as DateOnly | TimedDate);
+	const after = localDate(to[stepDriver(to)] as DateOnly | TimedDate);
+	if (before.equals(after)) return rule;
+	switch (rule.frequency) {
+		case 'weekly': {
+			const old = before.dayOfWeek as Weekday;
+			const weekdays = rule.weekdays ?? [old];
+			if (!weekdays.includes(old)) return rule;
+			const moved = new Set([...weekdays.filter((day) => day !== old), after.dayOfWeek as Weekday]);
+			return { ...rule, weekdays: [...moved].sort((a, b) => a - b) };
+		}
+		case 'monthly':
+		case 'yearly':
+			return { ...rule, monthDay: after.day };
 		default:
 			return rule;
 	}
