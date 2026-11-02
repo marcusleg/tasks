@@ -110,8 +110,10 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-3);
+		box-sizing: content-box;
 		height: var(--header-height);
-		padding: 0 var(--space-4);
+		padding: env(safe-area-inset-top) max(var(--space-4), env(safe-area-inset-right)) 0
+			max(var(--space-4), env(safe-area-inset-left));
 		background: var(--bg);
 		border-bottom: 1px solid var(--border);
 	}
@@ -188,7 +190,9 @@
 	main {
 		flex: 1;
 		min-width: 0;
-		padding: var(--space-5) var(--space-4);
+		padding: var(--space-5) max(var(--space-4), env(safe-area-inset-right))
+			calc(var(--space-5) + env(safe-area-inset-bottom))
+			max(var(--space-4), env(safe-area-inset-left));
 		overflow-x: auto;
 	}
 
@@ -203,8 +207,9 @@
 
 		.sidebar {
 			position: fixed;
-			top: var(--header-height);
+			top: calc(var(--header-height) + env(safe-area-inset-top));
 			bottom: 0;
+			padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
 			left: 0;
 			z-index: 30;
 			max-width: 85vw;
@@ -223,13 +228,14 @@
 		.backdrop {
 			display: block;
 			position: fixed;
-			inset: var(--header-height) 0 0 0;
+			inset: calc(var(--header-height) + env(safe-area-inset-top)) 0 0 0;
 			z-index: 25;
 			background: var(--overlay);
 		}
 
 		header {
-			padding: 0 var(--space-3);
+			padding-right: max(var(--space-3), env(safe-area-inset-right));
+			padding-left: max(var(--space-3), env(safe-area-inset-left));
 			gap: var(--space-2);
 		}
 
