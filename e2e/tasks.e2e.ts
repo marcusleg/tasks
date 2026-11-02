@@ -141,3 +141,27 @@ test('the detail panel is a full-screen sheet at 360px', async ({ page }) => {
 	await page.keyboard.press('Escape');
 	await expect(detailPanel(page)).toBeHidden();
 });
+
+test('Title and Details typed just before closing with Esc are still saved', async ({ page }) => {
+	await addTask(page, 'Milk');
+	await page.getByRole('button', { name: 'Milk' }).click();
+	const panel = detailPanel(page);
+
+	// Esc closes the panel well within the save delay.
+	await saved(page, async () => {
+		await panel.getByRole('textbox', { name: 'Title' }).fill('Oat milk');
+		await page.keyboard.press('Escape');
+	});
+	await expect(panel).toBeHidden();
+
+	await page.getByRole('button', { name: 'Oat milk' }).click();
+	await saved(page, async () => {
+		await panel.getByRole('textbox', { name: 'Details' }).fill('From the corner shop');
+		await page.keyboard.press('Escape');
+	});
+	await expect(panel).toBeHidden();
+
+	await page.reload();
+	await page.getByRole('button', { name: 'Oat milk' }).click();
+	await expect(panel.getByText('From the corner shop')).toBeVisible();
+});
