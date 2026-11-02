@@ -28,7 +28,7 @@ import {
 } from '#lib/domain/subtasks.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
 import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
-import { api } from './api.js';
+import { api, type TaskPatch } from './api.js';
 import type { Toasts } from './toasts.svelte.js';
 
 type ById = Record<string, SerializedTask>;
@@ -165,7 +165,7 @@ export class TaskStore {
 		return id;
 	}
 
-	update(id: string, patch: { title?: string; description?: string }): Promise<boolean> {
+	update(id: string, patch: TaskPatch): Promise<boolean> {
 		this.#patchLocal(id, patch);
 		return this.#send('save the task', () => api.updateTask(id, patch));
 	}
