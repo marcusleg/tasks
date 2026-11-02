@@ -6,10 +6,16 @@
 	import favicon from '#lib/assets/favicon.svg';
 	import AppShell from '#lib/components/AppShell.svelte';
 	import SidebarNav from '#lib/components/SidebarNav.svelte';
+	import Toasts from '#lib/components/Toasts.svelte';
+	import { ListStore, setListStore } from '#lib/client/lists.svelte.js';
+	import { setToasts, Toasts as ToastQueue } from '#lib/client/toasts.svelte.js';
 	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';
 
-	let { children }: LayoutProps = $props();
+	let { data, children }: LayoutProps = $props();
+
+	const toasts = setToasts(new ToastQueue());
+	setListStore(new ListStore(() => data.lists, toasts));
 </script>
 
 <svelte:head>
@@ -28,6 +34,7 @@
 		{/snippet}
 		{@render children()}
 	</AppShell>
+	<Toasts {toasts} />
 {:else}
 	<!-- Public pages (sign in, not allowed) render without the shell. -->
 	{@render children()}
