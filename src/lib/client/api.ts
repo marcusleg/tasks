@@ -6,6 +6,7 @@ import { resolve } from '$app/paths';
 import type { SerializedCalendarLink } from '#lib/domain/calendar-links.js';
 import type { SerializedList, SortMode } from '#lib/domain/lists.js';
 import type { SerializedDueDate, SerializedPlannedDate } from '#lib/domain/dates.js';
+import type { TaskMove } from '#lib/domain/moves.js';
 import type { Priority, TaskChanges } from '#lib/domain/tasks.js';
 
 export class ApiError extends Error {
@@ -89,6 +90,8 @@ export const api = {
 	reopenTask: (id: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/reopen', { id }), {}),
 	deleteTask: (id: string) => request<TaskChanges>('DELETE', task(id)),
+	moveTask: (id: string, move: TaskMove) =>
+		request<TaskChanges>('POST', resolve('/api/tasks/[id]/move', { id }), move),
 
 	createCalendarLink: (input: { name: string; allLists?: boolean; listIds?: string[] }) =>
 		request<{ calendarLink: SerializedCalendarLink }>(

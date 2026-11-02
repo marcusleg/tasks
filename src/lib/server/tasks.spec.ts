@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
 	dateOnly,
@@ -8,6 +9,7 @@ import {
 	unsetDate
 } from '#lib/domain/dates.js';
 import { completedTasksOf, openTasksOf, serializeTask } from '#lib/domain/tasks.js';
+import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
 import { InvalidInputError } from '#lib/domain/validation.js';
 import { tasks } from './db/schema';
 import { createList } from './lists';
@@ -21,6 +23,7 @@ import {
 	getTask,
 	getPriorityViewTasks,
 	getTasksOfLists,
+	moveTask,
 	reopenTask,
 	updateTask
 } from './tasks';
@@ -491,5 +494,127 @@ describe('getPriorityViewTasks', () => {
 
 		expect(titles(view.tasks)).toEqual(['Parent']);
 		expect(titles(view.related)).toEqual(['Child']);
+	});
+});
+
+describe('moveTask', () => {
+	/** Party (Subtasks Cake, Candles), Milk, Eggs in Groceries, and an empty "Work" List. */
+	function party() {
+		const { db, alice, bob, list } = setUp();
+		const work = createList(alice, { name: 'Work' });
+		const eggs = add(alice, list.id, 'Eggs');
+		const milk = add(alice, list.id, 'Milk');
+		const partyTask = add(alice, list.id, 'Party');
+		const cake = add(alice, list.id, 'Cake', partyTask.id);
+		const candles = add(alice, list.id, 'Candles', partyTask.id);
+		return { db, alice, bob, list, work, eggs, milk, party: partyTask, cake, candles };
+	}
+	/** Titles of a parent's Subtasks in a List, in Custom Order. */
+	const subtasksIn = (scope: UserScope, listId: string, parentId: string) =>
+		titles(getListTasks(scope, listId).filter((task) => task.parentId === parentId));
+
+	it('reorders within a List, changing only the moved Task', () => {
+		const { alice, list, eggs, party: p } = party();
+
+		const changes = moveTask(alice, eggs.id, { listId: list.id, parentId: null, before: p.id });
+
+		expect(open(alice, list.id)).toEqual(['Eggs', 'Party', 'Milk']);
+		expect(changes?.upserted.map((task) => task.id)).toEqual([eggs.id]);
+	});
+
+	it('nests a Task under another and promotes it back out', () => {
+		const { alice, list, milk, party: p, cake } = party();
+
+		moveTask(alice, milk.id, { listId: list.id, parentId: p.id, before: cake.id });
+		expect(subtasksIn(alice, list.id, p.id)).toEqual(['Milk', 'Cake', 'Candles']);
+		expect(open(alice, list.id)).toEqual(['Party', 'Eggs']);
+
+		moveTask(alice, milk.id, { listId: list.id, parentId: null, after: p.id });
+		expect(subtasksIn(alice, list.id, p.id)).toEqual(['Cake', 'Candles']);
+		expect(open(alice, list.id)).toEqual(['Party', 'Milk', 'Eggs']);
+	});
+
+	it('keeps nesting one level deep', () => {
+		const { alice, list, milk, party: p, cake } = party();
+
+		expect(() => moveTask(alice, p.id, { listId: list.id, parentId: milk.id })).toThrow(
+			/Task with Subtasks/
+		);
+		expect(() => moveTask(alice, milk.id, { listId: list.id, parentId: cake.id })).toThrow(
+			/Subtask can’t have Subtasks/
+		);
+		expect(getTask(alice, milk.id)?.parentId).toBeNull();
+	});
+
+	it('doesn’t give a recurring parent a recurring Subtask', () => {
+		const { db, alice, list, milk, eggs } = party();
+		const weekly: SerializedRecurrence = {
+			frequency: 'weekly',
+			interval: 1,
+			weekdays: [1],
+			end: { kind: 'never' },
+			anchor: 'schedule'
+		};
+		for (const id of [milk.id, eggs.id]) {
+			db.update(tasks)
+				.set({ recurrence: weekly, plannedDate: '2026-11-02' })
+				.where(eq(tasks.id, id))
+				.run();
+		}
+
+		expect(() => moveTask(alice, eggs.id, { listId: list.id, parentId: milk.id })).toThrow(
+			/can’t both recur/
+		);
+	});
+
+	it('moves a Task to another List with its Subtasks', () => {
+		const { alice, list, work, party: p } = party();
+
+		const changes = moveTask(alice, p.id, { listId: work.id, parentId: null });
+
+		expect(open(alice, work.id)).toEqual(['Party']);
+		expect(subtasksIn(alice, work.id, p.id)).toEqual(['Cake', 'Candles']);
+		expect(getListTasks(alice, list.id).map((task) => task.title)).toEqual(['Milk', 'Eggs']);
+		expect(changes?.upserted).toHaveLength(3);
+	});
+
+	it('makes a Subtask moved to another List a top-level Task there', () => {
+		const { alice, list, work, party: p, cake } = party();
+
+		moveTask(alice, cake.id, { listId: work.id, parentId: null });
+
+		expect(open(alice, work.id)).toEqual(['Cake']);
+		expect(subtasksIn(alice, list.id, p.id)).toEqual(['Candles']);
+	});
+
+	it('refuses Completed Tasks and unknown neighbours', () => {
+		const { alice, list, milk, eggs, cake } = party();
+		completeTask(alice, milk.id);
+
+		expect(() => moveTask(alice, milk.id, { listId: list.id, parentId: null })).toThrow(
+			InvalidInputError
+		);
+		expect(() =>
+			moveTask(alice, eggs.id, { listId: list.id, parentId: null, before: cake.id })
+		).toThrow(/Unknown neighbour/);
+	});
+
+	it("can't touch another User's Tasks or Lists", () => {
+		const { alice, bob, list, milk } = party();
+		const bobs = createList(bob, { name: 'Bob' });
+		const bobsTask = add(bob, bobs.id, 'Bob task');
+
+		// Bob can't move Alice's Task, nor into Alice's List.
+		expect(moveTask(bob, milk.id, { listId: bobs.id, parentId: null })).toBeUndefined();
+		expect(moveTask(bob, bobsTask.id, { listId: list.id, parentId: null })).toBeUndefined();
+		// Nor nest under or next to Alice's Tasks.
+		expect(() => moveTask(bob, bobsTask.id, { listId: bobs.id, parentId: milk.id })).toThrow(
+			/Unknown parent/
+		);
+		expect(() =>
+			moveTask(bob, bobsTask.id, { listId: bobs.id, parentId: null, after: milk.id })
+		).toThrow(/Unknown neighbour/);
+		expect(getTask(alice, milk.id)?.listId).toBe(list.id);
+		expect(getTask(bob, bobsTask.id)?.listId).toBe(bobs.id);
 	});
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
+	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { openTask } from '#lib/client/task-panel.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import LinkifiedText from '#lib/components/LinkifiedText.svelte';
@@ -115,6 +116,15 @@
 		clearTimeout(saveTimer);
 		onClose();
 		void store.remove(task.id);
+	}
+
+	// "Move to List" (#11): to the top of the other List, with its Subtasks; a Subtask becomes a
+	// top-level Task there. Drag-and-drop does the same on wide screens.
+	const lists = getListStore();
+
+	function moveToList(event: Event) {
+		const listId = (event.currentTarget as HTMLSelectElement).value;
+		if (listId !== task.listId) void store.move(task.id, { listId, parentId: null });
 	}
 
 	// Showing the editor while there is no Description gives a place to start typing.
@@ -241,6 +251,24 @@
 				{/if}
 			</section>
 		{/if}
+
+		<div class="move">
+			<label class="label" for="{id}-list">List</label>
+			<select
+				id="{id}-list"
+				value={task.listId}
+				disabled={completed}
+				aria-describedby={completed ? `${id}-list-hint` : undefined}
+				onchange={moveToList}
+			>
+				{#each lists.all as list (list.id)}
+					<option value={list.id}>{list.name}</option>
+				{/each}
+			</select>
+			{#if completed}
+				<p id="{id}-list-hint" class="hint">Reopen the task to move it.</p>
+			{/if}
+		</div>
 	</div>
 
 	<footer>
@@ -328,6 +356,25 @@
 	.hint {
 		color: var(--muted);
 		font-size: 0.875rem;
+	}
+
+	.move {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.move select {
+		width: 100%;
+		padding: var(--space-2) var(--space-3);
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+	}
+
+	.move select:focus {
+		outline: none;
+		border-color: var(--accent-purple);
 	}
 
 	.icon {

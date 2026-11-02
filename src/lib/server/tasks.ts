@@ -23,6 +23,7 @@ import {
 	reopenChanges,
 	type CompletionChange
 } from '#lib/domain/subtasks.js';
+import { moveChanges, type TaskMove } from '#lib/domain/moves.js';
 import { InvalidInputError, isId } from '#lib/domain/validation.js';
 import { dueColumns, plannedColumns, toTask } from './db/mapping.js';
 import { tasks } from './db/schema.js';
@@ -249,6 +250,39 @@ export function reopenTask(scope: UserScope, id: string): TaskChangeSet | undefi
 	const task = getTask(scope, id);
 	if (!task) return undefined;
 	return applyCompletionChanges(scope, reopenChanges(familyOf(scope, task), id));
+}
+
+/**
+ * Moves a Task in Custom Order (see `moveChanges` in `#lib/domain/moves.ts`): among its siblings,
+ * under another top-level Task of the target List (it becomes a Subtask), out of its parent, or to
+ * another of the User's Lists, where its Subtasks follow it. Only the moved Task gets a new
+ * position. `undefined` if the Task or the target List isn't the User's. Throws
+ * `InvalidInputError` for a move the rules don't allow (one level deep, Recurrence, Completed
+ * Tasks, unknown parent or neighbour).
+ */
+export function moveTask(scope: UserScope, id: string, move: TaskMove): TaskChangeSet | undefined {
+	const task = getTask(scope, id);
+	if (!task || !getList(scope, move.listId)) return undefined;
+
+	// better-sqlite3 runs on one connection, so these reads are part of the transaction.
+	return scope.db.transaction((tx) => {
+		const changes = moveChanges(
+			getTasksOfLists(scope, [...new Set([task.listId, move.listId])]),
+			id,
+			move
+		);
+		const upserted = changes.map(({ id, ...values }) =>
+			toTask(
+				tx
+					.update(tasks)
+					.set(values)
+					.where(owned(scope, eq(tasks.id, id)))
+					.returning()
+					.get()
+			)
+		);
+		return { upserted, deleted: [] };
+	});
 }
 
 /** Deletes a Task and its Subtasks. `undefined` if the Task isn't the User's. */

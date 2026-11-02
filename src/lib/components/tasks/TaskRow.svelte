@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { getTaskDrag } from '#lib/client/task-drag.svelte.js';
 	import { openTask, openTaskId } from '#lib/client/task-panel.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import type { SerializedTask } from '#lib/domain/tasks.js';
@@ -15,9 +16,15 @@
 		meta?: Snippet<[SerializedTask]>;
 		/** At the end of the row, e.g. the toggle that collapses a parent's Subtasks. */
 		trailing?: Snippet;
+		/** Shows a drag handle (Custom Order, #11) when the page offers drag-and-drop. */
+		reorderable?: boolean;
 	};
 
-	let { task, meta, trailing }: Props = $props();
+	let { task, meta, trailing, reorderable = false }: Props = $props();
+
+	const drag = getTaskDrag();
+	const titleId = $props.id();
+	const handle = $derived(reorderable && drag?.canDrag(task));
 
 	const store = getTaskStore();
 	const completed = $derived(task.completedAt !== null);
@@ -29,7 +36,33 @@
 	}
 </script>
 
-<li class="task" class:completed class:selected data-task-id={task.id}>
+<li
+	class="task"
+	class:completed
+	class:selected
+	class:drag-source={drag?.draggingId === task.id}
+	data-task-id={task.id}
+>
+	{#if handle && drag}
+		<button
+			type="button"
+			class="handle"
+			data-task-handle
+			aria-label="Move task"
+			aria-describedby="{titleId} task-move-hint"
+			onpointerdown={(event) => drag.start(event, task)}
+			onkeydown={(event) => drag.keydown(event, task)}
+		>
+			<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+				<path
+					d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"
+					stroke="currentColor"
+					stroke-width="3"
+					stroke-linecap="round"
+				/>
+			</svg>
+		</button>
+	{/if}
 	<label class="check">
 		<input type="checkbox" checked={completed} onchange={toggle} aria-label={task.title} />
 		<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -45,6 +78,7 @@
 	</label>
 	<div class="body">
 		<button
+			id={titleId}
 			type="button"
 			class="open"
 			aria-haspopup="dialog"
@@ -65,6 +99,7 @@
 
 <style>
 	.task {
+		position: relative;
 		display: flex;
 		align-items: flex-start;
 		gap: var(--space-1);
@@ -158,5 +193,58 @@
 	.completed .open {
 		color: var(--muted);
 		text-decoration: line-through;
+	}
+
+	/* Drag handle (#11): in the gutter left of the checkbox, shown on hover and focus, and always
+	   on touch screens. Only the handle stops touch scrolling, so the List still scrolls. */
+	.handle {
+		position: absolute;
+		top: 0;
+		left: -0.375rem;
+		display: grid;
+		place-items: center;
+		width: 1.125rem;
+		height: 2.75rem;
+		padding: 0;
+		background: none;
+		border: none;
+		border-radius: var(--radius-sm);
+		color: var(--muted);
+		cursor: grab;
+		opacity: 0;
+		touch-action: none;
+	}
+
+	.handle svg {
+		position: static;
+		width: 1rem;
+		height: 1rem;
+		color: inherit;
+		opacity: 1;
+	}
+
+	.task:hover .handle,
+	.handle:focus-visible {
+		opacity: 1;
+	}
+
+	.handle:hover {
+		color: var(--fg);
+		background: var(--surface-hover);
+	}
+
+	@media (hover: none) {
+		.handle {
+			opacity: 1;
+		}
+	}
+
+	.drag-source {
+		opacity: 0.4;
+	}
+
+	/* While a Task is dragged, the rows it passes over aren't highlighted. */
+	:global(html.task-dragging) .task:not(.selected):hover {
+		background: none;
 	}
 </style>
