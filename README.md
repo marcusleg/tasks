@@ -58,6 +58,10 @@ export const load: PageServerLoad = ({ locals }) => {
 
 Data-access functions take a `UserScope` (never a bare `Db`) and filter by `scope.userId`, including in `update` and `delete` statements, so a guessed id from another User matches nothing. `requireUser(locals)` returns the `User` when you only need who is signed in. Pages get the User as `data.user` (`{ id, name, email }` or `null`) from the root layout.
 
+### Reading and changing data
+
+Pages load their data in `load` functions; changes go through the JSON endpoints under `src/routes/api/`, called via `api` in `src/lib/client/api.ts` (see [ADR 0003](docs/adr/0003-json-endpoints-for-mutations.md)). Components don't call `api` directly: they use the page's `TaskStore` and the layout's `ListStore` (`getTaskStore()` / `getListStore()`), which update the screen optimistically. The open Task detail panel is part of the URL (`?task=<id>`), so `/lists/<listId>?task=<taskId>` links straight to a Task.
+
 ### Database migrations
 
 The schema lives in `src/lib/server/db/schema.ts`. After changing it, run `npm run db:generate` and commit the generated files in `drizzle/`. The server applies pending migrations when it starts (from the `init` hook in `src/hooks.server.ts`), so there is no separate migrate step. Migrations are read from `./drizzle` relative to the working directory, so start the server from the project root.

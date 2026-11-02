@@ -11,5 +11,5 @@ test('GET /healthz reports ok', async ({ request }) => {
 test('home page renders', async ({ page }) => {
 	await loginAs(page);
 
-	await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'My Tasks' })).toBeVisible();
 });
