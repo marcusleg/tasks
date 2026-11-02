@@ -747,6 +747,8 @@ function deleteWithSubtasks(scope: UserScope, id: string): string[] {
 export interface DeletedTasks extends TaskChangeSet {
 	/** The deleted Task first, then its Subtasks in Custom Order. */
 	removed: Task[];
+	/** The Occurrence that took a skipped one's place, which Undo replaces again; else `null`. */
+	nextOccurrenceId: string | null;
 }
 
 /**
@@ -783,11 +785,19 @@ export function deleteTask(
 		const upserted: Task[] = [];
 		const parent = recurringParent(scope, task);
 		if (parent && applyTo === 'occurrence') upserted.push(...keepSubtaskTemplate(scope, parent));
+		let nextOccurrenceId: string | null = null;
 		if (task.recurrence && !task.completedAt && applyTo === 'occurrence') {
 			const recurring = { ...task, recurrence: task.recurrence };
-			upserted.push(
-				...createNextOccurrence(scope, recurring, [task, ...subtasks], now, timeZone, null)
+			const created = createNextOccurrence(
+				scope,
+				recurring,
+				[task, ...subtasks],
+				now,
+				timeZone,
+				null
 			);
+			nextOccurrenceId = created[0]?.id ?? null;
+			upserted.push(...created);
 		}
 		const deleted = deleteWithSubtasks(scope, id);
 		if (parent && applyTo === 'future') {
@@ -798,7 +808,11 @@ export function deleteTask(
 			);
 		}
 		const removed = [task, ...subtasks];
-		return { ...changeSet([...upserted, ...markChanged(scope, task.parentId)], deleted), removed };
+		return {
+			...changeSet([...upserted, ...markChanged(scope, task.parentId)], deleted),
+			removed,
+			nextOccurrenceId
+		};
 	});
 }
 

@@ -233,7 +233,9 @@ export class TaskStore {
 
 	/**
 	 * Deletes a Task and its Subtasks. Undo restores them as the server deleted them (same ids,
-	 * positions, dates, completion and everything else).
+	 * positions, dates, completion and everything else). `applyTo` "occurrence" skips a recurring
+	 * Task's current Occurrence: the next one comes with the server's answer, and Undo puts the
+	 * skipped one back in its place.
 	 */
 	remove(id: string, applyTo?: ApplyTo): Promise<boolean> {
 		const local = [this.#tasks[id], ...this.all.filter((task) => task.parentId === id)].filter(
@@ -241,17 +243,20 @@ export class TaskStore {
 		);
 		this.apply({ upserted: [], deleted: local.map((task) => task.id) });
 		let removed: SerializedTask[] | undefined;
+		let next: string | null = null;
 		const done = this.#send('delete the task', async () => {
 			const answer = await api.deleteTask(id, { applyTo, timeZone: browserTimeZone() });
 			removed = answer.removed;
+			next = answer.next;
 			return answer;
 		});
 		this.#offerUndo('Task deleted', done, () => {
 			this.apply({ upserted: local, deleted: [] });
-			// Queued after the delete, so its answer (with `removed`) is in by then.
+			// Queued after the delete, so its answer (with `removed` and `next`) is in by then; the
+			// restore's answer removes the next Occurrence it replaces.
 			void this.#send('restore the task', () => {
 				if (!removed) throw new Error('The task wasn’t deleted');
-				return api.restoreTasks(removed);
+				return api.restoreTasks(removed, next);
 			});
 		});
 		return done;

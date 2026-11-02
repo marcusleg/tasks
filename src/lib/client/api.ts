@@ -108,11 +108,20 @@ export const api = {
 		if (options.applyTo) query.set('applyTo', options.applyTo);
 		if (options.timeZone) query.set('timeZone', options.timeZone);
 		const search = query.size > 0 ? `?${query}` : '';
-		return request<TaskChanges & { removed: SerializedTask[] }>('DELETE', `${task(id)}${search}`);
+		return request<TaskChanges & { removed: SerializedTask[]; next: string | null }>(
+			'DELETE',
+			`${task(id)}${search}`
+		);
 	},
-	/** Undo for `deleteTask`: puts its `removed` Tasks back. */
-	restoreTasks: (tasks: SerializedTask[]) =>
-		request<TaskChanges>('POST', resolve('/api/tasks/restore'), { tasks }),
+	/**
+	 * Undo for `deleteTask`: puts its `removed` Tasks back; `replaces` (its `next`) removes the
+	 * Occurrence that took a skipped one's place.
+	 */
+	restoreTasks: (tasks: SerializedTask[], replaces?: string | null) =>
+		request<TaskChanges>('POST', resolve('/api/tasks/restore'), {
+			tasks,
+			...(replaces && { replaces })
+		}),
 	moveTask: (id: string, move: TaskMove) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/move', { id }), move),
 

@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { type Locator, type Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { loginAs } from './auth';
 import { addTask, column, detailPanel, openTitles, saved } from './lists-tasks';
 
@@ -24,6 +25,12 @@ const editPrompt = (page: Page): Locator =>
 	page.getByRole('dialog', { name: 'Change a repeating task' });
 const deletePrompt = (page: Page): Locator =>
 	page.getByRole('dialog', { name: 'Delete a repeating task' });
+
+const undoButton = (page: Page): Locator =>
+	page
+		.getByRole('status', { name: 'Notifications' })
+		.getByRole('group', { name: 'Notification' })
+		.getByRole('button', { name: 'Undo' });
 
 async function openTask(page: Page, title: string): Promise<void> {
 	await openList(page).getByRole('button', { name: title, exact: true }).click();
@@ -189,4 +196,51 @@ test('a Task that doesn’t repeat is never asked about', async ({ page }) => {
 	await saved(page, () => detailPanel(page).getByRole('button', { name: 'Delete task' }).click());
 	await expect(deletePrompt(page)).toBeHidden();
 	await expect(openTitles(page, LIST)).toHaveCount(0);
+});
+
+test('Undo after deleting This Occurrence brings it back instead of the next one', async ({
+	page
+}) => {
+	await weeklyTask(page);
+	await openTask(page, 'Water plants');
+	await detailPanel(page).getByRole('button', { name: 'Delete task' }).click();
+	await saved(page, () =>
+		deletePrompt(page).getByRole('button', { name: 'This occurrence' }).click()
+	);
+	await expect(openRow(page, 'Water plants')).toContainText('17 Mar 2027');
+
+	const restore = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/tasks/restore');
+	await undoButton(page).click();
+	expect((await restore).ok()).toBe(true);
+
+	await expect(openTitles(page, LIST)).toHaveText(['Water plants']);
+	await expect(openRow(page, 'Water plants')).toContainText('10 Mar 2027');
+	await page.reload();
+	await expect(openTitles(page, LIST)).toHaveText(['Water plants']);
+	await expect(openRow(page, 'Water plants')).toContainText('10 Mar 2027');
+
+	// The series counts on from the restored Occurrence: completing it brings 17 March.
+	await complete(page, 'Water plants');
+	await expect(openRow(page, 'Water plants')).toContainText('17 Mar 2027');
+});
+
+test('Undo after deleting this and all future Occurrences restores the series', async ({
+	page
+}) => {
+	await weeklyTask(page);
+	await openTask(page, 'Water plants');
+	await detailPanel(page).getByRole('button', { name: 'Delete task' }).click();
+	await saved(page, () =>
+		deletePrompt(page).getByRole('button', { name: 'This and all future' }).click()
+	);
+	await expect(openTitles(page, LIST)).toHaveCount(0);
+
+	await saved(page, () => undoButton(page).click());
+
+	await expect(openRow(page, 'Water plants')).toContainText('10 Mar 2027');
+	await expect(
+		openRow(page, 'Water plants').getByRole('img', { name: 'Repeats weekly' })
+	).toBeVisible();
+	await page.reload();
+	await expect(openRow(page, 'Water plants')).toContainText('10 Mar 2027');
 });

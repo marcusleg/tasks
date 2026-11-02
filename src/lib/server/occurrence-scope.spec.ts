@@ -14,6 +14,7 @@ import { parseRecurrence, serializeRecurrence } from '#lib/domain/recurrence.js'
 import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
 import { openTasksOf, serializeTask, type Task } from '#lib/domain/tasks.js';
 import { createList } from './lists';
+import { parseRestoredTasks, RestoreConflictError, restoreTasks } from './task-restore';
 import type { UserScope } from './scope';
 import {
 	completeTask,
@@ -528,5 +529,95 @@ describe('deleting This and all future', () => {
 		deleteTask(alice, task.id);
 
 		expect(getListTasks(alice, list.id)).toEqual([]);
+	});
+});
+
+describe('Undo of deleting a recurring Task', () => {
+	/** Deletes and returns what the browser keeps for Undo, through JSON like the browser's copy. */
+	function deleteForUndo(scope: UserScope, id: string, applyTo: ApplyTo) {
+		const changes = deleteTask(scope, id, applyTo)!;
+		const removed = JSON.parse(JSON.stringify(changes.removed.map(serializeTask)));
+		return { removed: parseRestoredTasks(removed), next: changes.nextOccurrenceId };
+	}
+
+	it('of This Occurrence brings the skipped Occurrence back in place of the next one', () => {
+		const { alice, list } = setUp();
+		const task = waterPlants(alice, list.id);
+		add(alice, list.id, 'Fern', task.id);
+		updateTask(alice, task.id, { planned: dateOnly('2026-11-03') }, 'occurrence');
+		const { removed, next } = deleteForUndo(alice, task.id, 'occurrence');
+		expect(next).not.toBeNull();
+		const nextFern = getListTasks(alice, list.id).find((t) => t.parentId === next)!;
+
+		const changes = restoreTasks(alice, removed, next!)!;
+
+		expect(changes.deleted.sort()).toEqual([next, nextFern.id].sort());
+		expect(getTask(alice, next!)).toBeUndefined();
+		const restored = getTask(alice, task.id)!;
+		expect(restored).toMatchObject({ occurrencesSoFar: 1, completedAt: null });
+		expect(planned(restored)).toEqual({ kind: 'date', date: '2026-11-03' });
+		expect(
+			getListTasks(alice, list.id)
+				.map((t) => t.title)
+				.sort()
+		).toEqual(['Fern', 'Water plants']);
+		// And the series goes on from the template as before.
+		const again = completeAndGetNext(alice, task.id);
+		expect(again.occurrencesSoFar).toBe(2);
+		expect(planned(again)).toEqual({ kind: 'date', date: '2026-11-09' });
+	});
+
+	it('of This Occurrence when the series had ended just brings it back', () => {
+		const { alice, list } = setUp();
+		const task = add(alice, list.id, 'Course');
+		updateTask(alice, task.id, {
+			planned: dateOnly('2026-11-02'),
+			recurrence: rule({ frequency: 'weekly', end: { kind: 'count', count: 1 } })
+		});
+		const { removed, next } = deleteForUndo(alice, task.id, 'occurrence');
+		expect(next).toBeNull();
+
+		restoreTasks(alice, removed);
+
+		expect(getListTasks(alice, list.id).map((t) => t.id)).toEqual([task.id]);
+	});
+
+	it('of This Occurrence is refused once the next Occurrence was changed', () => {
+		const { alice, list } = setUp();
+		const task = waterPlants(alice, list.id);
+		const { removed, next } = deleteForUndo(alice, task.id, 'occurrence');
+		updateTask(alice, next!, { title: 'Water the ferns' });
+
+		expect(() => restoreTasks(alice, removed, next!)).toThrow(RestoreConflictError);
+		expect(getTask(alice, task.id)).toBeUndefined();
+		expect(getTask(alice, next!)?.title).toBe('Water the ferns');
+	});
+
+	it('only replaces an open Occurrence of the same series, of the same User', () => {
+		const { db, alice, list } = setUp();
+		const task = waterPlants(alice, list.id);
+		const other = waterPlants(alice, list.id);
+		const { removed } = deleteForUndo(alice, task.id, 'occurrence');
+		const bob: UserScope = { db, userId: insertUser(db, 'bob').id };
+		const bobsList = createList(bob, { name: 'Bob' });
+		const bobs = waterPlants(bob, bobsList.id);
+
+		expect(() => restoreTasks(alice, removed, other.id)).toThrow(RestoreConflictError);
+		expect(() => restoreTasks(alice, removed, bobs.id)).toThrow(RestoreConflictError);
+		expect(getTask(bob, bobs.id)).toBeDefined();
+		expect(getTask(alice, other.id)).toBeDefined();
+	});
+
+	it('of This and all future restores the series as it was', () => {
+		const { alice, list } = setUp();
+		const task = waterPlants(alice, list.id);
+		updateTask(alice, task.id, { title: 'Water the ferns' }, 'occurrence');
+		const { removed, next } = deleteForUndo(alice, task.id, 'future');
+		expect(next).toBeNull();
+
+		restoreTasks(alice, removed);
+
+		expect(getTask(alice, task.id)).toMatchObject({ seriesId: task.seriesId });
+		expect(completeAndGetNext(alice, task.id).title).toBe('Water plants');
 	});
 });

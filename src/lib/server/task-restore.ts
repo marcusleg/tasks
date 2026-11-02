@@ -7,6 +7,9 @@
  * every field is parsed, ownership comes from the {@link UserScope} (never from the body), the
  * List and any parent outside the batch must still be the User's, and an id that is taken makes
  * the whole restore fail with a clash instead of overwriting anything.
+ *
+ * Undo of skipping an Occurrence ("This Occurrence", #17) restores the skipped one and removes the
+ * Occurrence that took its place (`replaces`), in one transaction.
  */
 import { and, eq, inArray, type SQL } from 'drizzle-orm';
 import { InvalidDateError, parseDueDate, parsePlannedDate } from '#lib/domain/dates.js';
@@ -15,8 +18,8 @@ import { InvalidRecurrenceError, parseRecurrence } from '#lib/domain/recurrence.
 import {
 	isPriority,
 	parseDescription,
+	parseSeriesTemplate,
 	parseTitle,
-	type SeriesTemplate,
 	type Task
 } from '#lib/domain/tasks.js';
 import { InvalidInputError, isId } from '#lib/domain/validation.js';
@@ -137,7 +140,10 @@ function parseRestoredTask(value: unknown, index: number): Task {
 		occurrencesSoFar: occurrences,
 		generatedFromTaskId: nullableId(fields, 'generatedFromTaskId', index),
 		changedSinceGenerated: booleanField(fields, 'changedSinceGenerated', index),
-		seriesTemplate: template as SeriesTemplate | null,
+		seriesTemplate:
+			template === null
+				? null
+				: parsed(index, 'seriesTemplate', () => parseSeriesTemplate(template)),
 		createdAt: timestampField(fields, 'createdAt', index),
 		updatedAt: timestampField(fields, 'updatedAt', index)
 	};
@@ -188,14 +194,56 @@ export function parseRestoredTasks(value: unknown): Task[] {
  * `RestoreConflictError` when a parent outside the batch is gone, in another List, or doesn't fit
  * the Subtask rules any more, and the primary key constraint error (a 409 through
  * `withInputErrors`) when an id is taken. Nothing is written unless everything fits.
+ *
+ * `replaces` is the Occurrence that took the place of a skipped one (the first restored Task): it
+ * is deleted with its Subtasks, and listed as `deleted`. It must be the User's open Occurrence of
+ * the same series, in the same place, and unchanged since it was generated; otherwise
+ * `RestoreConflictError`.
  */
-export function restoreTasks(scope: UserScope, restored: Task[]): TaskChangeSet | undefined {
+export function restoreTasks(
+	scope: UserScope,
+	restored: Task[],
+	replaces?: string
+): TaskChangeSet | undefined {
 	const listId = restored[0].listId;
 	if (!getList(scope, listId)) return undefined;
 	const owned = (...conditions: SQL[]) => and(ownedBy(tasks.userId, scope), ...conditions) as SQL;
 	const ids = new Set(restored.map((task) => task.id));
 
 	return scope.db.transaction((tx) => {
+		/** Deletes the Occurrence `replaces` (and its Subtasks) after checking it may go. */
+		const removeReplaced = (id: string): string[] => {
+			const skipped = restored[0];
+			const row = tx
+				.select()
+				.from(tasks)
+				.where(owned(eq(tasks.id, id)))
+				.get();
+			const next = row && toTask(row);
+			const fits =
+				next &&
+				!ids.has(id) &&
+				skipped.seriesId !== null &&
+				next.seriesId === skipped.seriesId &&
+				next.listId === skipped.listId &&
+				next.parentId === skipped.parentId &&
+				next.completedAt === null;
+			if (!fits) throw new RestoreConflictError('The next Occurrence isn’t there any more');
+			if (next.changedSinceGenerated) {
+				throw new RestoreConflictError('The next Occurrence was changed meanwhile');
+			}
+			const subtaskIds = tx
+				.select({ id: tasks.id })
+				.from(tasks)
+				.where(owned(eq(tasks.parentId, id)))
+				.all()
+				.map((subtask) => subtask.id);
+			tx.delete(tasks)
+				.where(owned(eq(tasks.id, id)))
+				.run();
+			return [id, ...subtaskIds];
+		};
+
 		/** The User's Tasks outside the batch that the batch refers to through `wanted`. */
 		const outside = (wanted: (task: Task) => string | null) => {
 			const lookup = [...new Set(restored.map(wanted))].filter(
@@ -228,6 +276,8 @@ export function restoreTasks(scope: UserScope, restored: Task[]): TaskChangeSet 
 				throw new RestoreConflictError('The parent Task recurs now');
 			}
 		}
+
+		const deleted = replaces === undefined ? [] : removeReplaced(replaces);
 
 		// The Occurrence a Task was generated from may be gone by now (the column is `set null`).
 		const sources = outside((task) => task.generatedFromTaskId);
@@ -265,6 +315,6 @@ export function restoreTasks(scope: UserScope, restored: Task[]): TaskChangeSet 
 				.get();
 			upserted[ordered.indexOf(task)] = toTask(row);
 		}
-		return { upserted, deleted: [] };
+		return { upserted, deleted };
 	});
 }
