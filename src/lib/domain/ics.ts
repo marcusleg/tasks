@@ -3,7 +3,14 @@
  */
 import { Temporal } from 'temporal-polyfill';
 import { toZonedDateTime, type DueDate, type PlannedDate } from './dates';
-import { toRRules, type OccurrenceDates, type RecurrenceRule, type RRules } from './recurrence';
+import {
+	nextOccurrence,
+	stepDriver,
+	toRRules,
+	type OccurrenceDates,
+	type RecurrenceRule,
+	type RRules
+} from './recurrence';
 import { vtimezone } from './vtimezone';
 
 export const DEFAULT_PRODID = '-//marcusleg//Tasks//EN';
@@ -33,6 +40,12 @@ export type CalendarRecurrence = {
 	rule: RecurrenceRule;
 	/** How many Occurrences the series has had, including this one (the first is 1). */
 	occurrencesSoFar: number;
+	/**
+	 * Whether this Occurrence was moved off the rule by editing "This Occurrence". It is then
+	 * published as a one-off event under the Task id, followed by the series from the next
+	 * Occurrence on (RFC 5545 leaves a DTSTART that doesn't match the rule undefined).
+	 */
+	detached?: boolean;
 };
 
 export type BuildCalendarInput = {
@@ -170,17 +183,40 @@ function sameDate({ planned, due }: OccurrenceDates): boolean {
 	return false;
 }
 
+/**
+ * When an Occurrence would be completed on time: at its driving date (in its zone, or for a
+ * date-only value in UTC, whose calendar date is all that counts).
+ */
+function onTimeCompletion(dates: OccurrenceDates): Temporal.ZonedDateTime {
+	const driver = dates[stepDriver(dates)];
+	if (driver.kind === 'timed') return toZonedDateTime(driver);
+	if (driver.kind === 'date') return driver.date.toZonedDateTime('UTC');
+	throw new Error('A recurring Task needs at least one date');
+}
+
+function series(uidBase: string, dates: OccurrenceDates, recurrence: CalendarRecurrence) {
+	const { rule, occurrencesSoFar } = recurrence;
+	return { uidBase, dates, rrules: toRRules(rule, { ...dates, occurrencesSoFar }) };
+}
+
 function publications(task: CalendarTask): Publication[] {
 	const dates: OccurrenceDates = { planned: task.planned, due: task.due };
 	const { recurrence } = task;
 	if (!recurrence || (dates.planned.kind === 'unset' && dates.due.kind === 'unset')) {
 		return [{ uidBase: task.id, dates }];
 	}
-	const rrules = toRRules(recurrence.rule, {
+	if (!recurrence.detached) return [series(recurrence.seriesId, dates, recurrence)];
+	// Completion-anchored rules are projected from an on-time completion, as toRRules does.
+	const next = nextOccurrence({
 		...dates,
-		occurrencesSoFar: recurrence.occurrencesSoFar
+		rule: recurrence.rule,
+		occurrencesSoFar: recurrence.occurrencesSoFar,
+		completedAt: onTimeCompletion(dates)
 	});
-	return [{ uidBase: recurrence.seriesId, dates, rrules }];
+	const single: Publication = { uidBase: task.id, dates };
+	if (!next) return [single];
+	const occurrencesSoFar = recurrence.occurrencesSoFar + 1;
+	return [single, series(recurrence.seriesId, next, { ...recurrence, occurrencesSoFar })];
 }
 
 function taskEvents(task: CalendarTask, options: Options): string[] {

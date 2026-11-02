@@ -737,3 +737,67 @@ describe('a recurring series matches the app', () => {
 		]);
 	});
 });
+
+describe('an Occurrence moved off its Recurrence ("This Occurrence")', () => {
+	const weekly = rule({ frequency: 'weekly', weekdays: [2] });
+	// The rule says Tuesdays; this Occurrence was moved to Wednesday.
+	const moved: OccurrenceDates = {
+		planned: timedPlannedDate('2026-10-21T09:00', 'Europe/Berlin', 60),
+		due: dateOnly('2026-10-23')
+	};
+
+	function detached(recurrence: RecurrenceRule, occurrencesSoFar: number, dates = moved) {
+		return task({
+			id: 'occurrence-3',
+			...dates,
+			recurrence: { seriesId: 'series-1', rule: recurrence, occurrencesSoFar, detached: true }
+		});
+	}
+
+	it('is published on its own, under its Task id and without an RRULE', () => {
+		const ics = calendarOf(detached(weekly, 3));
+
+		const planned = eventByUid(ics, 'occurrence-3-planned@tasks');
+		const due = eventByUid(ics, 'occurrence-3-due@tasks');
+		expect(planned.getFirstPropertyValue('dtstart')?.toString()).toBe('2026-10-21T09:00:00');
+		expect(due.getFirstPropertyValue('dtstart')?.toString()).toBe('2026-10-23');
+		expect(planned.hasProperty('rrule')).toBe(false);
+		expect(due.hasProperty('rrule')).toBe(false);
+	});
+
+	it('is followed by the series, starting at the next Occurrence', () => {
+		const ics = calendarOf(detached(weekly, 3));
+
+		const next = nextOccurrence({ ...moved, rule: weekly, occurrencesSoFar: 3 })!;
+		const app = appSeries(next, weekly, 4, 20);
+		expect(startOf(app[0].planned)).toBe('2026-10-27T08:00:00Z');
+		expect(expand(eventByUid(ics, 'series-1-planned@tasks'), 20)).toEqual(
+			app.map((dates) => startOf(dates.planned))
+		);
+		expect(expand(eventByUid(ics, 'series-1-due@tasks'), 20)).toEqual(
+			app.map((dates) => startOf(dates.due))
+		);
+	});
+
+	it('is published alone when it is the last Occurrence', () => {
+		const ics = calendarOf(detached(rule({ ...weekly, end: { kind: 'count', count: 3 } }), 3));
+
+		expect(events(ics).map((event) => event.getFirstPropertyValue('uid'))).toEqual([
+			'occurrence-3-planned@tasks',
+			'occurrence-3-due@tasks'
+		]);
+	});
+
+	it('counts a series from completion as if this Occurrence is completed on time', () => {
+		const everyThreeDays = rule({ frequency: 'daily', interval: 3, anchor: 'completion' });
+		const ics = calendarOf(
+			detached(everyThreeDays, 1, { planned: dateOnly('2026-11-05'), due: unsetDate })
+		);
+
+		expect(expand(eventByUid(ics, 'series-1-planned@tasks'), 3)).toEqual([
+			'2026-11-08',
+			'2026-11-11',
+			'2026-11-14'
+		]);
+	});
+});
