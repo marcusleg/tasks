@@ -219,10 +219,6 @@ export const userPreferences = sqliteTable('user_preferences', {
 	userId: text('user_id')
 		.primaryKey()
 		.references(() => users.id, { onDelete: 'cascade' }),
-	/** The List shown at `/` (and on mobile in #10); falls back to the first List. */
-	lastViewedListId: text('last_viewed_list_id').references(() => lists.id, {
-		onDelete: 'set null'
-	}),
 	createdAt: createdAt(),
 	updatedAt: updatedAt()
 });

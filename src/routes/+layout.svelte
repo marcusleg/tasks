@@ -10,6 +10,7 @@
 	import ScopeDialog from '#lib/components/ScopeDialog.svelte';
 	import { ScopePrompt, setScopePrompt } from '#lib/client/occurrence-scope.svelte.js';
 	import { ListStore, setListStore } from '#lib/client/lists.svelte.js';
+	import { startPageRefresh } from '#lib/client/page-refresh.js';
 	import { setToasts, Toasts as ToastQueue } from '#lib/client/toasts.svelte.js';
 	import { onMount } from 'svelte';
 	import { hydration } from '#lib/client/hydration.svelte.js';
@@ -25,6 +26,8 @@
 	onMount(() => {
 		hydration.done = true;
 		document.documentElement.dataset.hydrated = 'true';
+		// Signing in or out is a full page load, so this is decided once per page.
+		return data.user ? startPageRefresh() : undefined;
 	});
 </script>
 

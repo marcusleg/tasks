@@ -152,26 +152,10 @@ export function ensureUserSetUp(scope: UserScope): boolean {
 	});
 }
 
-/** Remembers the List the User last looked at. Ignores Lists that aren't the User's. */
-export function setLastViewedList(scope: UserScope, listId: string): void {
-	if (!getList(scope, listId)) return;
-	scope.db
-		.insert(userPreferences)
-		.values({ userId: scope.userId, lastViewedListId: listId })
-		.onConflictDoUpdate({
-			target: userPreferences.userId,
-			set: { lastViewedListId: listId, updatedAt: new Date() }
-		})
-		.run();
-}
-
-/** The List to show at `/`: the last-viewed one if it still exists, else the first. */
-export function getStartList(scope: UserScope): List | undefined {
-	const prefs = scope.db
-		.select({ lastViewedListId: userPreferences.lastViewedListId })
-		.from(userPreferences)
-		.where(ownedBy(userPreferences.userId, scope))
-		.get();
-	const lastViewed = prefs?.lastViewedListId && getList(scope, prefs.lastViewedListId);
-	return lastViewed || getLists(scope)[0];
+/**
+ * The List to show at `/`: the one last viewed on this device if it still exists and is the User's,
+ * else the first.
+ */
+export function getStartList(scope: UserScope, lastViewedId: string | undefined): List | undefined {
+	return (lastViewedId && getList(scope, lastViewedId)) || getLists(scope)[0];
 }
