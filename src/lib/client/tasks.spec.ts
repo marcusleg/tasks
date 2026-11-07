@@ -325,6 +325,50 @@ describe('TaskStore through the in-process adapter', () => {
 			expect(store.openTasks(chores.id).map((task) => task.title)).toEqual(['Party', 'Dishes']);
 		});
 
+		it('move to another List, then Undo: the server’s Undo puts the Task and its Subtasks back', async () => {
+			const groceries = createList(scope(), { name: 'Groceries' });
+			const chores = createList(scope(), { name: 'Chores' });
+			const parent = seed(groceries.id, 'Party');
+			seed(groceries.id, 'Cake', parent.id);
+			seed(chores.id, 'Dishes');
+			const { store, toasts, port } = setupOn([groceries.id, chores.id]);
+			const before = serverTasks();
+
+			await store.move(parent.id, { listId: chores.id, parentId: null });
+			toasts.act(toasts.actionable!.id);
+			await port.idle();
+
+			expect(port.requests.at(-1)?.path).toBe('/api/undo');
+			expect(serverTasks()).toEqual(before);
+			expectInSyncWithServer(store);
+			expect(port.reloads).toBe(0);
+		});
+
+		it('move within a List: no Undo is offered, and the Undo of the action before stays valid', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const chores = createList(scope(), { name: 'Chores' });
+			const milk = seed(list.id, 'Milk');
+			const bread = seed(list.id, 'Bread');
+			const eggs = seed(list.id, 'Eggs');
+			const { store, toasts, port } = setupOn([list.id, chores.id]);
+			const before = serverTasks();
+
+			await store.move(milk.id, { listId: chores.id, parentId: null });
+			const undo = toasts.actionable!.id;
+			await store.move(eggs.id, { listId: list.id, parentId: null, after: bread.id });
+			expect(toasts.actionable?.id).toBe(undo);
+			const reordered = serverTasks();
+			expect(reordered).not.toEqual(before);
+
+			toasts.act(undo);
+			await port.idle();
+
+			expect(messages(toasts)).not.toContain(expect.stringContaining('Couldn'));
+			expect(port.reloads).toBe(0);
+			expect(serverTasks().find((task) => task.id === milk.id)?.listId).toBe(list.id);
+			expectInSyncWithServer(store);
+		});
+
 		it('move: to a List that isn’t on the page, the position is the store’s guess until the answer', async () => {
 			// The picker offers every List, but a page loads the Tasks of only some (the Priority View
 			// of none of the target), so the store can't know the target's Custom Order.

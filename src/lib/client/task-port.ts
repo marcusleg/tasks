@@ -36,7 +36,8 @@ export interface TaskPort {
 	): Promise<DeletedTaskChanges>;
 	/** Puts back the state before the action whose answer carried this `undo` (ADR 0004). */
 	undo(undoId: string): Promise<TaskChanges>;
-	moveTask(id: string, move: TaskMove): Promise<TaskChanges>;
+	/** `undo` is for {@link TaskPort.undo}; it is `null` for a move within a List, which offers none. */
+	moveTask(id: string, move: TaskMove): Promise<TaskChanges & { undo: string | null }>;
 	deleteCompletedTasks(listId: string): Promise<TaskChanges>;
 	/** Reloads the page data, so the store's copy matches the server again. */
 	reload(): Promise<void>;

@@ -125,7 +125,11 @@ export const api = {
 	/** Puts back the state before the action whose answer carried this `undo` (ADR 0004). */
 	undo: (undoId: string) => request<TaskChanges>('POST', resolve('/api/undo'), { undoId }),
 	moveTask: (id: string, move: TaskMove) =>
-		request<TaskChanges>('POST', resolve('/api/tasks/[id]/move', { id }), move),
+		request<TaskChanges & { undo: string | null }>(
+			'POST',
+			resolve('/api/tasks/[id]/move', { id }),
+			move
+		),
 
 	createCalendarLink: (input: { name: string; allLists?: boolean; listIds?: string[] }) =>
 		request<{ calendarLink: SerializedCalendarLink }>(

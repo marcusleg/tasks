@@ -7,9 +7,9 @@
  *
  * Completing, deleting and moving a Task to another List offer Undo in a toast (#14), which puts
  * back the previous state through the server. Deleting a Task (a Subtask, or skipping an Occurrence
- * included) uses the server's Undo (ADR 0004). The others have yet to move to it: Reopen (which
- * also restores the Subtasks the completion closed, and removes the next Occurrence it created), or
- * moving the Task back to its old Custom Order position.
+ * included) and moving to another List use the server's Undo (ADR 0004). The others have yet to
+ * move to it: Reopen (which also restores the Subtasks the completion closed, and removes the next
+ * Occurrence it created).
  *
  * Created by a page from its `load` data and shared with the components below it through
  * context ({@link setTaskStore} / {@link getTaskStore}). The page calls {@link TaskStore.dispose}
@@ -284,25 +284,38 @@ export class TaskStore {
 	 * Moves a Task in Custom Order: among its siblings, under another Task, out of its parent, or
 	 * to another List with its Subtasks (the rules in `#lib/domain/moves`). A move the rules don't
 	 * allow is refused without a request and resolves to `false`; a move to where the Task already
-	 * is sends nothing. A move to another List offers Undo, which moves the Task back to its old
-	 * parent and Custom Order position.
+	 * is sends nothing. A move to another List offers Undo, which is the server's (ADR 0004): it puts
+	 * back the Task (with its Subtasks) and anything the move did to its parent or Occurrences, and
+	 * Undo's answer brings the store along.
 	 */
 	move(id: string, move: TaskMove): Promise<boolean> {
 		const task = this.#tasks[id];
-		const done = this.#move(id, move);
-		if (task && task.listId !== move.listId) {
-			const back = { listId: task.listId, parentId: task.parentId, position: task.position };
+		const toAnotherList = task && task.listId !== move.listId;
+		const local = toAnotherList
+			? [task, ...this.all.filter((subtask) => subtask.parentId === id)]
+			: [];
+		let undoId: string | null = null;
+		const done = this.#move(id, move, (answer) => (undoId = answer.undo));
+		if (toAnotherList) {
 			const name = this.#listName(move.listId);
 			this.#offerUndo(name ? `Moved to ${name}` : 'Task moved', done, () => {
-				const problem = this.moveError(id, back);
-				if (problem) this.#toasts.failed('undo the move', new Error(problem));
-				else void this.#move(id, back);
+				this.apply({ upserted: local, deleted: [] });
+				// Queued after the move, so its answer (with `undo`) is in by then.
+				void this.#send('undo', () => {
+					if (!undoId) throw new Error('The task wasn’t moved');
+					return this.#port.undo(undoId);
+				});
 			});
 		}
 		return done;
 	}
 
-	#move(id: string, move: TaskMove): Promise<boolean> {
+	/** `onAnswer` gets the server's answer to the move, which carries `undo` for a move to another List. */
+	#move(
+		id: string,
+		move: TaskMove,
+		onAnswer?: (answer: TaskChanges & { undo: string | null }) => void
+	): Promise<boolean> {
 		const all = Object.values(this.#tasks);
 		if (moveError(all, id, move)) return Promise.resolve(false);
 		const changes = moveChanges(all, id, move);
@@ -316,7 +329,11 @@ export class TaskStore {
 		const next = { ...this.#tasks };
 		for (const { id: changed, ...patch } of changes) next[changed] = { ...next[changed], ...patch };
 		this.#tasks = next;
-		return this.#send('move the task', () => this.#port.moveTask(id, move));
+		return this.#send('move the task', async () => {
+			const answer = await this.#port.moveTask(id, move);
+			onAnswer?.(answer);
+			return answer;
+		});
 	}
 
 	/** "Delete all completed" for one List. */
