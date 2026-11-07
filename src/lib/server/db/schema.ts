@@ -214,6 +214,23 @@ export const tasks = sqliteTable(
 export type TaskRow = typeof tasks.$inferSelect;
 export type NewTaskRow = typeof tasks.$inferInsert;
 
+/**
+ * The User's latest undoable action, so it can be undone (CONTEXT.md → Undo, ADR 0004). A newer
+ * action replaces the row, so there is at most one per User. Only `#lib/server/undo.ts` reads the
+ * JSON, and it has to survive changes to `tasks`, so it is plain text here.
+ */
+export const undoRecords = sqliteTable('undo_records', {
+	userId: text('user_id')
+		.primaryKey()
+		.references(() => users.id, { onDelete: 'cascade' }),
+	/** Given to the browser with the action's answer; Undo has to name it. */
+	id: text('id').notNull(),
+	/** JSON: every Task of the touched Task families as they were before the action. */
+	before: text('before').notNull(),
+	/** JSON: the same families as the action left them. */
+	after: text('after').notNull()
+});
+
 /** Per-User settings. A row exists once the User has been set up (see `ensureUserSetUp`). */
 export const userPreferences = sqliteTable('user_preferences', {
 	userId: text('user_id')

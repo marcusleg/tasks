@@ -16,8 +16,9 @@ function fakePort() {
 		reopenTask: vi.fn<TaskPort['reopenTask']>(changes),
 		moveTask: vi.fn<TaskPort['moveTask']>(changes),
 		deleteTask: vi.fn<TaskPort['deleteTask']>(() =>
-			Promise.resolve({ upserted: [], deleted: [], removed: [], next: null })
+			Promise.resolve({ upserted: [], deleted: [], undo: null, removed: [], next: null })
 		),
+		undo: vi.fn<TaskPort['undo']>(changes),
 		restoreTasks: vi.fn<TaskPort['restoreTasks']>(changes),
 		deleteCompletedTasks: vi.fn<TaskPort['deleteCompletedTasks']>(changes),
 		reload: vi.fn<TaskPort['reload']>(() => Promise.resolve())

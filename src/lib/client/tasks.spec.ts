@@ -601,6 +601,50 @@ describe('TaskStore through the in-process adapter', () => {
 			expectInSyncWithServer(store, list.id);
 		});
 
+		describe.each(['occurrence', 'future'] as const)('delete a Subtask with %s', (applyTo) => {
+			/** Its Subtasks have a template, from renaming "Cut stems" with "This Occurrence". */
+			function plantsWithTemplate(listId: string) {
+				const { task, subtask } = plants(listId);
+				const other = seed(listId, 'Cut stems', task.id);
+				updateTask(scope(), other.id, { title: 'Cut the stems' }, 'occurrence');
+				return { task, subtask };
+			}
+
+			it('then Undo: the server’s Undo puts it back, and the store has its parent’s template', async () => {
+				const list = createList(scope(), { name: 'Groceries' });
+				const { subtask } = plantsWithTemplate(list.id);
+				const { store, toasts, port } = setup(list.id);
+				const before = serverTasks(list.id);
+
+				await store.remove(subtask.id, asked(applyTo));
+				toasts.act(toasts.actionable!.id);
+				await port.idle();
+
+				expect(port.requests.at(-1)?.path).toBe('/api/undo');
+				expect(serverTasks(list.id)).toEqual(before);
+				expectInSyncWithServer(store, list.id);
+				expect(port.reloads).toBe(0);
+			});
+
+			it('then Undo after the state moved on: a toast and a reload, and nothing overwritten', async () => {
+				const list = createList(scope(), { name: 'Groceries' });
+				const { task, subtask } = plantsWithTemplate(list.id);
+				const { store, toasts, port } = setup(list.id);
+
+				await store.remove(subtask.id, asked(applyTo));
+				updateTask(scope(), task.id, { title: 'Water ferns' });
+				const moved = serverTasks(list.id);
+				toasts.act(toasts.actionable!.id);
+				await port.idle();
+
+				expect(messages(toasts)).toContain(
+					"Couldn't undo. The Task or its Subtasks changed in the meantime."
+				);
+				expect(port.reloads).toBe(1);
+				expect(serverTasks(list.id)).toEqual(moved);
+			});
+		});
+
 		it('delete: ending the Recurrence removes the Task and its Subtasks as on the server', async () => {
 			const list = createList(scope(), { name: 'Groceries' });
 			const { task } = plants(list.id);

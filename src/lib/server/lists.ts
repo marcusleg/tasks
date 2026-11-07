@@ -17,6 +17,7 @@ import { isId, InvalidInputError } from '#lib/domain/validation.js';
 import { toList } from './db/mapping.js';
 import { lists, userPreferences } from './db/schema.js';
 import { ownedBy, type UserScope } from './scope.js';
+import { forgetList } from './undo.js';
 
 /** All of the User's Lists, in List order. */
 export function getLists(scope: UserScope): List[] {
@@ -108,7 +109,9 @@ export function deleteList(scope: UserScope, id: string): boolean {
 		.where(and(eq(lists.id, id), ownedBy(lists.userId, scope)))
 		.returning({ id: lists.id })
 		.all();
-	return deleted.length > 0;
+	if (deleted.length === 0) return false;
+	forgetList(scope, id);
+	return true;
 }
 
 /**

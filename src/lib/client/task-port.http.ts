@@ -10,6 +10,7 @@ export const httpTaskPort: TaskPort = {
 	completeTask: (id, timeZone) => api.completeTask(id, timeZone),
 	reopenTask: (id) => api.reopenTask(id),
 	deleteTask: (id, options) => api.deleteTask(id, options),
+	undo: (undoId) => api.undo(undoId),
 	restoreTasks: (tasks, replaces) => api.restoreTasks(tasks, replaces),
 	moveTask: (id, move) => api.moveTask(id, move),
 	deleteCompletedTasks: (listId) => api.deleteCompletedTasks(listId),

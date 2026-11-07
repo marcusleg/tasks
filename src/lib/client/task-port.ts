@@ -20,6 +20,8 @@ export interface NewTaskInput {
 }
 
 export interface DeletedTaskChanges extends TaskChanges {
+	/** For {@link TaskPort.undo}. */
+	undo: string | null;
 	/** The deleted Tasks as they were, for {@link TaskPort.restoreTasks}. */
 	removed: SerializedTask[];
 	/** The Occurrence that took a skipped one's place. */
@@ -36,6 +38,8 @@ export interface TaskPort {
 		id: string,
 		options: { applyTo?: ApplyTo; timeZone?: string }
 	): Promise<DeletedTaskChanges>;
+	/** Puts back the state before the action whose answer carried this `undo` (ADR 0004). */
+	undo(undoId: string): Promise<TaskChanges>;
 	restoreTasks(tasks: SerializedTask[], replaces?: string | null): Promise<TaskChanges>;
 	moveTask(id: string, move: TaskMove): Promise<TaskChanges>;
 	deleteCompletedTasks(listId: string): Promise<TaskChanges>;

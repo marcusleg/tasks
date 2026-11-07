@@ -4,6 +4,7 @@ import type { SerializedTask, TaskChanges } from '../src/lib/domain/tasks';
 import { loginAs } from './auth';
 import { appOrigin } from './env';
 import {
+	addSubtask,
 	addTask,
 	column,
 	createList,
@@ -174,6 +175,119 @@ test('move to another List, then Undo: the Task goes back to its place', async (
 	await page.reload();
 	await expect(openTitles(page, LIST)).toHaveText(['Bread', 'Eggs', 'Milk']);
 	await expect(column(page, 'Work').getByText('No tasks yet')).toBeVisible();
+});
+
+/**
+ * A weekly "Water plants" with the Subtasks "Fern" and "Cactus", and a Subtask template from
+ * renaming Cactus to "Cacti" with "This Occurrence": the next Occurrence gets Fern and Cactus.
+ */
+async function waterPlantsWithTemplate(page: Page): Promise<SerializedTask> {
+	const parent = await addTaskAndGet(page, 'Water plants');
+	const recurring = await page.request.patch(`/api/tasks/${parent.id}`, {
+		data: {
+			planned: { kind: 'date', date: '2027-03-10' },
+			recurrence: { frequency: 'weekly', interval: 1, end: { kind: 'never' }, anchor: 'schedule' }
+		}
+	});
+	expect(recurring.ok()).toBe(true);
+	const subtask = (title: string) =>
+		createThroughApi(page, { listId: parent.listId, parentId: parent.id, title });
+	await subtask('Fern');
+	const cactus = await subtask('Cactus');
+	const renamed = await page.request.patch(`/api/tasks/${cactus.id}`, {
+		data: { title: 'Cacti', applyTo: 'occurrence' }
+	});
+	expect(renamed.ok()).toBe(true);
+	await page.reload();
+	await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Fern', 'Cacti']);
+	return parent;
+}
+
+async function deleteFern(page: Page, scope: string): Promise<void> {
+	await column(page, LIST).getByRole('button', { name: 'Fern', exact: true }).click();
+	await detailPanel(page).getByRole('button', { name: 'Delete task' }).click();
+	await saved(page, () =>
+		page
+			.getByRole('dialog', { name: 'Delete a repeating task' })
+			.getByRole('button', { name: scope })
+			.click()
+	);
+	await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Cacti']);
+	await expect(toast(page)).toContainText('Task deleted');
+}
+
+for (const scope of ['This occurrence', 'This and all future']) {
+	test(`delete a Subtask with "${scope}", then Undo: future Occurrences have it again`, async ({
+		page
+	}) => {
+		await waterPlantsWithTemplate(page);
+		await deleteFern(page, scope);
+
+		const undone = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/undo');
+		await undoButton(page).click();
+		expect((await undone).ok()).toBe(true);
+		await expect(toast(page)).toHaveCount(0);
+		await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Fern', 'Cacti']);
+
+		await page.reload();
+		await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Fern', 'Cacti']);
+
+		await saved(page, () => checkbox(page, 'Water plants').click());
+		await expect(row(page, 'Water plants')).toContainText('17 Mar 2027');
+		await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Fern', 'Cactus']);
+	});
+}
+
+test('Undo of deleting a Subtask keeps a Subtask added while the toast was showing', async ({
+	page
+}) => {
+	await addTask(page, 'Party');
+	const party = column(page, LIST).getByRole('button', { name: 'Party', exact: true });
+	await party.click();
+	await addSubtask(page, 'Cake');
+	await addSubtask(page, 'Candles');
+	await page.keyboard.press('Escape');
+	await expect(detailPanel(page)).toBeHidden();
+
+	await column(page, LIST).getByRole('button', { name: 'Cake', exact: true }).click();
+	await saved(page, () => detailPanel(page).getByRole('button', { name: 'Delete task' }).click());
+	await expect(toast(page)).toContainText('Task deleted');
+	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Candles']);
+
+	await party.click();
+	await addSubtask(page, 'Balloons');
+	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Candles', 'Balloons']);
+
+	const undone = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/undo');
+	await undoButton(page).click();
+	expect((await undone).ok()).toBe(true);
+
+	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Cake', 'Candles', 'Balloons']);
+	await page.reload();
+	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Cake', 'Candles', 'Balloons']);
+});
+
+test('Undo of deleting a Subtask overwrites nothing if the state has moved on', async ({
+	page
+}) => {
+	const parent = await waterPlantsWithTemplate(page);
+	await deleteFern(page, 'This and all future');
+	// As if from another tab.
+	const edited = await page.request.patch(`/api/tasks/${parent.id}`, {
+		data: { title: 'Water it all', applyTo: 'future' }
+	});
+	expect(edited.ok()).toBe(true);
+
+	const undone = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/undo');
+	await undoButton(page).click();
+	expect((await undone).status()).toBe(409);
+
+	await expect(notifications(page)).toContainText(
+		"Couldn't undo. The Task or its Subtasks changed in the meantime."
+	);
+	await expect(subtaskTitles(page, LIST, 'Water it all')).toHaveText(['Cacti']);
+	await page.reload();
+	await expect(subtaskTitles(page, LIST, 'Water it all')).toHaveText(['Cacti']);
 });
 
 test('Ctrl+Z undoes the latest action, but not while typing; Undo is reachable by keyboard', async ({

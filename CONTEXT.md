@@ -48,6 +48,10 @@ _Avoid_: Done, finished, archived
 Undoing a Task's Completed state. Reopening a Subtask whose parent is Completed reopens the parent too (a Completed Task never has open Subtasks), but not its other Subtasks. If the Occurrence being reopened is the one that created the current Occurrence, and that current Occurrence hasn't been changed by the User, the reopened Occurrence takes its place again. In every other case it comes back as a one-off Task with no Recurrence.
 _Avoid_: Uncomplete, uncheck, restore
 
+**Undo**:
+Putting back the exact state before the User's latest action, once, from the toast that action showed. It covers everything the action did, including to the parent and to future Occurrences. If putting that back would overwrite or lose a later change, Undo does nothing and says so: that means a later change to what the action changed, to the parent, or, if the action changed the parent's fields or Subtask template, to any of the parent's Subtasks. Other later changes stay, such as a new Subtask next to a deleted one that comes back, and they still count as changes for Reopen. Unlike Reopen, it follows no rules of its own about what comes back.
+_Avoid_: Revert, rollback, restore
+
 ### Recurrence
 
 **Recurrence**:

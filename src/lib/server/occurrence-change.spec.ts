@@ -296,6 +296,48 @@ describe('the mutations', () => {
 
 		expect(isChanged(family, family.parent.id)).toBe(false);
 	});
+
+	describe('answer with the parent as last written, its template and changed state included', () => {
+		function expectParentInAnswer(family: Family, upserted: Task[], template: string[]) {
+			const parent = upserted.find((task) => task.id === family.parent.id);
+			expect(parent).toEqual(getTask(family.scope, family.parent.id));
+			expect(parent?.changedSinceGenerated).toBe(true);
+			expect(parent?.seriesTemplate?.subtasks?.map((entry) => entry.title)).toEqual(template);
+		}
+
+		it('createTask', () => {
+			const family = setUp();
+			resetChangedState(family);
+			const { scope, listId, parent } = family;
+
+			const changes = createTask(
+				scope,
+				{ listId, title: 'Moss', parentId: parent.id },
+				'occurrence'
+			)!;
+
+			expectParentInAnswer(family, changes.upserted, ['Fern', 'Cactus']);
+		});
+
+		it('deleteTask', () => {
+			const family = setUp();
+			resetChangedState(family);
+
+			const changes = deleteTask(family.scope, family.fern.id, 'occurrence')!;
+
+			expectParentInAnswer(family, changes.upserted, ['Fern', 'Cactus']);
+		});
+
+		it('moveTask', () => {
+			const family = setUp();
+			resetChangedState(family);
+			const { scope, listId, fern } = family;
+
+			const changes = moveTask(scope, fern.id, { listId, parentId: null })!;
+
+			expectParentInAnswer(family, changes.upserted, ['Fern', 'Cactus']);
+		});
+	});
 });
 
 describe('beginOccurrenceChange', () => {

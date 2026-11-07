@@ -9,6 +9,7 @@ import {
 	readTimeZone
 } from '#lib/server/task-input.js';
 import { deleteTask, serializeChanges, updateTask } from '#lib/server/tasks.js';
+import { undoable } from '#lib/server/undo.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -39,10 +40,11 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 };
 
 /**
- * Deletes a Task and its Subtasks → `TaskChanges & { removed: SerializedTask[], next }`. `removed`
- * holds the deleted Tasks as they were (the Task first, then its Subtasks), for
- * `POST /api/tasks/restore`; `next` is the id of the Occurrence that took a skipped one's place
- * (`null` otherwise), which that restore's `replaces` removes again.
+ * Deletes a Task and its Subtasks → `TaskChanges & { undo, removed: SerializedTask[], next }`.
+ * `undo` is what `POST /api/undo` takes to undo this. `removed` holds the deleted Tasks as they were
+ * (the Task first, then its Subtasks), for `POST /api/tasks/restore`; `next` is the id of the
+ * Occurrence that took a skipped one's place (`null` otherwise), which that restore's `replaces`
+ * removes again.
  * For a recurring Task, `?applyTo=occurrence` skips to the next Occurrence (counted in the
  * browser's `?timeZone` for completion-anchored rules), and `future` (the default) ends the
  * Recurrence; for a Subtask of one, it says whether future Occurrences keep it.
@@ -50,10 +52,14 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 export const DELETE: RequestHandler = ({ locals, params, url }) => {
 	const applyTo = readApplyTo(url.searchParams.get('applyTo'));
 	const timeZone = readTimeZone({ timeZone: url.searchParams.get('timeZone') ?? undefined });
-	const changes = deleteTask(userScope(locals), params.id, applyTo, new Date(), timeZone);
+	const scope = userScope(locals);
+	const changes = undoable(scope, () =>
+		deleteTask(scope, params.id, applyTo, new Date(), timeZone)
+	);
 	if (!changes) notFound('Task');
 	return json({
 		...serializeChanges(changes),
+		undo: changes.undoId,
 		removed: changes.removed.map(serializeTask),
 		next: changes.nextOccurrenceId
 	});
