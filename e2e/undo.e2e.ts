@@ -245,3 +245,18 @@ test('a failed restore is reported, e.g. when the List was deleted meanwhile', a
 	await undoButton(page).click();
 	await expect(notifications(page)).toContainText("Couldn't restore the task. List not found.");
 });
+
+test('a failed request toasts and the screen catches up', async ({ page }) => {
+	await addTask(page, 'Eggs');
+	const open = checkbox(page, 'Eggs');
+	await page.route('**/api/tasks/*/complete', (route) =>
+		route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"Boom"}' })
+	);
+
+	await open.click();
+
+	await expect(notifications(page)).toContainText("Couldn't complete the task. Boom.");
+	// The optimistic check-off is rolled back by reloading the page data.
+	await expect(open).toBeVisible({ timeout: 3000 });
+	await expect(open).not.toBeChecked();
+});

@@ -3,7 +3,17 @@ import { serializeTask, type SerializedTask } from '#lib/domain/tasks.js';
 import type { Db } from '#lib/server/db/client.js';
 import type { User } from '#lib/server/db/schema.js';
 import { createList } from '#lib/server/lists.js';
-import { completeTask, createTask, getTasksOfLists } from '#lib/server/tasks.js';
+import { dateOnly } from '#lib/domain/dates.js';
+import { parseRecurrence } from '#lib/domain/recurrence.js';
+import {
+	completeTask,
+	createTask,
+	getListTasks,
+	getTask,
+	getTasksOfLists,
+	updateTask
+} from '#lib/server/tasks.js';
+
 import { createTestDb, insertUser } from '#lib/server/testing/index.js';
 import { inProcessTaskPort } from '#lib/server/testing/in-process-task-port.js';
 import { TaskStore } from './tasks.svelte';
@@ -85,8 +95,12 @@ describe('TaskStore through the in-process adapter', () => {
 	describe('optimistic state vs the server’s answer', () => {
 		it('add: a new Task is as the server creates it', async () => {
 			const list = createList(scope(), { name: 'Groceries' });
+			const chores = createList(scope(), { name: 'Chores' });
 			seed(list.id, 'Bread');
-			const { store, port } = setup(list.id);
+			// Another List on the page: its Tasks mustn't count as siblings.
+			seed(chores.id, 'Dishes');
+			seed(chores.id, 'Mop');
+			const { store, port } = setupOn([list.id, chores.id]);
 
 			const id = store.add(list.id, '  Milk ');
 			const optimistic = { ...store.get(id)! };
@@ -94,7 +108,7 @@ describe('TaskStore through the in-process adapter', () => {
 
 			// Only the timestamps differ (client clock vs server clock).
 			expectAgreement(optimistic, store.get(id));
-			expectInSyncWithServer(store, list.id);
+			expectInSyncWithServer(store);
 			expect(store.openTasks(list.id).map((task) => task.title)).toEqual(['Milk', 'Bread']);
 		});
 
@@ -132,7 +146,7 @@ describe('TaskStore through the in-process adapter', () => {
 			expectInSyncWithServer(store, list.id);
 		});
 
-		it('update: a Recurrence is filled in by the server, which the optimistic copy lacks', async () => {
+		it('update: a new Recurrence is as sent, and the server starts its series', async () => {
 			const list = createList(scope(), { name: 'Groceries' });
 			const task = seed(list.id, 'Water plants');
 			const { store, port } = setup(list.id);
@@ -145,15 +159,14 @@ describe('TaskStore through the in-process adapter', () => {
 					weekdays: [1],
 					anchor: 'schedule',
 					end: { kind: 'never' }
-				} as never
+				}
 			});
 			const optimistic = { ...store.get(task.id)! };
 			expect(await done).toBe(true);
 			await port.idle();
 
-			// The server also sets the series fields of a Task that starts to recur; until its
-			// answer arrives the optimistic copy has only what was sent.
-			expectAgreement(optimistic, store.get(task.id), ['recurrence', 'seriesId', 'seriesTemplate']);
+			// Server only: the new series' id (the series template follows the first edit).
+			expectAgreement(optimistic, store.get(task.id), ['seriesId']);
 			expectInSyncWithServer(store, list.id);
 		});
 
@@ -165,6 +178,9 @@ describe('TaskStore through the in-process adapter', () => {
 			completeTask(scope(), cake.id);
 			const { store, port } = setup(list.id);
 
+			const cakeCompletedAt = store.get(cake.id)?.completedAt;
+			expect(cakeCompletedAt).toBeTruthy();
+
 			const done = store.complete(parent.id);
 			const optimistic = store.all.map((task) => ({ ...task }));
 			expect(await done).toBe(true);
@@ -175,9 +191,7 @@ describe('TaskStore through the in-process adapter', () => {
 				expect(Boolean(before.completedAt)).toBe(Boolean(store.get(before.id)?.completedAt));
 			}
 			// The Subtask that was already Completed keeps its own completion time.
-			expect(store.get(cake.id)?.completedAt).toBe(
-				serverTasks(list.id).find((task) => task.id === cake.id)?.completedAt
-			);
+			expect(store.get(cake.id)?.completedAt).toBe(cakeCompletedAt);
 			expectInSyncWithServer(store, list.id);
 			expect(port.reloads).toBe(0);
 		});
@@ -298,6 +312,28 @@ describe('TaskStore through the in-process adapter', () => {
 			expect(store.openTasks(chores.id).map((task) => task.title)).toEqual(['Party', 'Dishes']);
 		});
 
+		it('move: to a List that isn’t on the page, the position is the store’s guess until the answer', async () => {
+			// The picker offers every List, but a page loads the Tasks of only some (the Priority View
+			// of none of the target), so the store can't know the target's Custom Order.
+			const groceries = createList(scope(), { name: 'Groceries' });
+			const chores = createList(scope(), { name: 'Chores' });
+			const milk = seed(groceries.id, 'Milk');
+			seed(chores.id, 'Dishes');
+			const { store } = setup(groceries.id);
+
+			const done = store.move(milk.id, { listId: chores.id, parentId: null });
+			const optimistic = { ...store.get(milk.id)! };
+			expect(await done).toBe(true);
+
+			// Server only: the Task goes above Dishes; alone, the store puts it at the start.
+			expectAgreement(optimistic, store.get(milk.id), ['position']);
+			expect(optimistic.position).not.toBe(store.get(milk.id)?.position);
+			expect(store.get(milk.id)?.listId).toBe(chores.id);
+			expect(serverTasks(chores.id).find((task) => task.id === milk.id)?.position).toBe(
+				store.get(milk.id)?.position
+			);
+		});
+
 		it('delete-completed: the same Tasks go on both sides', async () => {
 			const list = createList(scope(), { name: 'Groceries' });
 			const bread = seed(list.id, 'Bread');
@@ -306,15 +342,21 @@ describe('TaskStore through the in-process adapter', () => {
 			const cake = seed(list.id, 'Cake', party.id);
 			completeTask(scope(), bread.id);
 			completeTask(scope(), cake.id);
-			const { store, port } = setup(list.id);
+			// Another List on the page, with a Completed Task of its own: it stays.
+			const chores = createList(scope(), { name: 'Chores' });
+			const dishes = seed(chores.id, 'Dishes');
+			completeTask(scope(), dishes.id);
+			const { store, port } = setupOn([list.id, chores.id]);
 
 			const done = store.deleteCompleted(list.id);
 			const optimistic = store.all.map((task) => task.id);
 			expect(await done).toBe(true);
 
 			expect(store.all.map((task) => task.id)).toEqual(optimistic);
-			expect(store.all.map((task) => task.id).sort()).toEqual([milk.id, party.id].sort());
-			expectInSyncWithServer(store, list.id);
+			expect(store.all.map((task) => task.id).sort()).toEqual(
+				[milk.id, party.id, dishes.id].sort()
+			);
+			expectInSyncWithServer(store);
 			expect(port.reloads).toBe(0);
 		});
 	});
@@ -358,7 +400,8 @@ describe('TaskStore through the in-process adapter', () => {
 			const { store, toasts, port } = setup(list.id);
 			// The Task is deleted elsewhere, so completing it here fails with a 404.
 			// Only the reload request is checked: vitest runs Svelte’s server build, whose $derived
-			// doesn’t re-derive when page data changes, so the screen catching up is covered by e2e.
+			// doesn’t re-derive when page data changes, so the screen catching up after the reload is
+			// covered by the e2e test “a failed request toasts and the screen catches up”.
 			db.run(`delete from tasks where id = '${milk.id}'`);
 
 			expect(await store.complete(milk.id)).toBe(false);
@@ -392,6 +435,292 @@ describe('TaskStore through the in-process adapter', () => {
 			await store.complete(milk.id);
 
 			expect(toasts.actionable).toBeUndefined();
+		});
+	});
+
+	describe('recurring Tasks', () => {
+		const weekly = (weekdays?: number[]) =>
+			parseRecurrence({
+				frequency: 'weekly',
+				interval: 1,
+				...(weekdays && { weekdays }),
+				end: { kind: 'never' },
+				anchor: 'schedule'
+			});
+
+		/** "Water plants", weekly from Monday 2026-11-09, with a Subtask "Fill can". */
+		function plants(listId: string) {
+			const task = seed(listId, 'Water plants');
+			updateTask(scope(), task.id, { planned: dateOnly('2026-11-09'), recurrence: weekly([1]) });
+			const subtask = seed(listId, 'Fill can', task.id);
+			return { task: serializeTask(getTask(scope(), task.id)!), subtask };
+		}
+
+		/**
+		 * Which fields of which Tasks differ between a snapshot taken right after the action
+		 * (optimistic) and the store once the answer is in. Timestamps and `changedSinceGenerated`
+		 * are left out (see `expectAgreement`). A Task that only the answer brings is `"new"`, one
+		 * the answer takes away `"gone"`.
+		 */
+		function drift(
+			before: SerializedTask[],
+			store: TaskStore,
+			ignore: (keyof SerializedTask)[] = []
+		) {
+			const result: Record<string, string[] | 'new' | 'gone'> = {};
+			const after = store.all;
+			for (const task of after) {
+				const was = before.find((other) => other.id === task.id);
+				if (!was) {
+					result[`${task.title} (next)`] = 'new';
+					continue;
+				}
+				const fields = (Object.keys(task) as (keyof SerializedTask)[]).filter(
+					(key) =>
+						!['createdAt', 'updatedAt', 'changedSinceGenerated', ...ignore].includes(key) &&
+						JSON.stringify(task[key]) !== JSON.stringify(was[key])
+				);
+				if (fields.length > 0) result[task.title] = fields;
+			}
+			for (const task of before) {
+				if (!after.some((other) => other.id === task.id)) result[task.title] = 'gone';
+			}
+			return result;
+		}
+
+		const snapshot = (store: TaskStore) => store.all.map((task) => ({ ...task }));
+		const byTitle = (store: TaskStore, title: string) =>
+			store.all.find((task) => task.title === title && !task.completedAt)!;
+
+		/**
+		 * Once the answer is in, the store should hold what the server has, except for
+		 * `generatedFromTaskId` after a Completed Occurrence is deleted: the database sets it to
+		 * `null` on the next Occurrence (foreign key `on delete set null`), but the answer doesn't
+		 * list that Task. No client code reads `generatedFromTaskId` and a reload clears it, so the
+		 * server's answers aren't widened for it.
+		 */
+		function expectInSyncExceptGeneratedFrom(store: TaskStore, listId: string) {
+			const without = (tasks: SerializedTask[]) =>
+				tasks.map((task) => ({ ...task, generatedFromTaskId: null }));
+			expect(without(store.all)).toEqual(without(serverTasks(listId)));
+		}
+
+		it('complete: the next Occurrence and its Subtasks come only with the answer', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			plants(list.id);
+			const { store } = setup(list.id);
+
+			const done = store.complete(byTitle(store, 'Water plants').id);
+			const optimistic = snapshot(store);
+			await done;
+
+			// Server only: the next Occurrence (the Task, and its Subtask reopened with shifted dates).
+			// `completedAt` is the browser's clock until the answer replaces it.
+			expect(drift(optimistic, store, ['completedAt'])).toEqual({
+				'Water plants (next)': 'new',
+				'Fill can (next)': 'new'
+			});
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('reopen: the next Occurrence gives way until the answer says so', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			completeTask(scope(), task.id);
+			const { store } = setup(list.id);
+			expect(store.openTasks(list.id)).toHaveLength(1);
+
+			const done = store.reopen(task.id);
+			const optimistic = snapshot(store);
+			await done;
+
+			// Server only: the next Occurrence (unchanged by the User) and its Subtask are removed,
+			// the reopened one takes their place. Both are on screen until the answer arrives.
+			expect(optimistic.filter((t) => !t.completedAt && !t.parentId)).toHaveLength(2);
+			expect(drift(optimistic, store)).toEqual({ 'Water plants': 'gone', 'Fill can': 'gone' });
+			expect(store.get(task.id)).toMatchObject({ completedAt: null, seriesId: task.seriesId });
+			expect(store.openTasks(list.id)).toHaveLength(1);
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('reopen: when the next Occurrence was edited, the Task comes back as a one-off', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			completeTask(scope(), task.id);
+			const next = getListTasks(scope(), list.id).find((t) => !t.completedAt && !t.parentId)!;
+			updateTask(scope(), next.id, { title: 'Water the plants' });
+			const { store } = setup(list.id);
+
+			const done = store.reopen(task.id);
+			const optimistic = snapshot(store);
+			await done;
+
+			// Server only: the reopened Occurrence loses its Recurrence and series.
+			expect(drift(optimistic, store)).toEqual({ 'Water plants': ['recurrence', 'seriesId'] });
+			expect(store.get(task.id)).toMatchObject({ recurrence: null, seriesId: null });
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('skip: the next Occurrence comes with the answer, and Undo puts the skipped one back', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			const { store, toasts, port } = setup(list.id);
+			const before = snapshot(store);
+
+			const done = store.remove(task.id, 'occurrence');
+			const optimistic = snapshot(store);
+			await done;
+
+			expect(optimistic).toEqual([]);
+			// Server only: the next Occurrence and its Subtask.
+			expect(drift(optimistic, store)).toEqual({
+				'Water plants (next)': 'new',
+				'Fill can (next)': 'new'
+			});
+			expectInSyncWithServer(store, list.id);
+
+			// Undo restores the skipped Occurrence (same ids) and removes the next one it replaced.
+			toasts.act(toasts.actionable!.id);
+			await port.idle();
+			expect(store.all.map((t) => t.id).sort()).toEqual(before.map((t) => t.id).sort());
+			expect(drift(before, store)).toEqual({});
+			expect(port.requests.at(-1)?.body).toMatchObject({ replaces: expect.any(String) });
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('delete: ending the Recurrence removes the Task and its Subtasks as on the server', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			const { store } = setup(list.id);
+
+			const done = store.remove(task.id, 'future');
+			const optimistic = snapshot(store);
+			await done;
+
+			expect(drift(optimistic, store)).toEqual({});
+			expect(store.all).toEqual([]);
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('delete: a Completed Occurrence leaves a stale generatedFromTaskId on the next one', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			completeTask(scope(), task.id);
+			const { store } = setup(list.id);
+
+			await store.remove(task.id);
+
+			// Known drift (see `expectInSyncExceptGeneratedFrom`).
+			const next = store.all.find((t) => !t.completedAt && !t.parentId)!;
+			expect(next.generatedFromTaskId).toBe(task.id);
+			expect(serverTasks(list.id).find((t) => t.id === next.id)?.generatedFromTaskId).toBeNull();
+			expectInSyncExceptGeneratedFrom(store, list.id);
+		});
+
+		it('delete-completed: the same, for the Completed Occurrences of a List', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			completeTask(scope(), task.id);
+			const { store } = setup(list.id);
+
+			const done = store.deleteCompleted(list.id);
+			const optimistic = snapshot(store);
+			await done;
+
+			// Known drift (see `expectInSyncExceptGeneratedFrom`): the next Occurrence keeps pointing at
+			// the deleted Task until the page is reloaded. Nothing else differs.
+			const next = store.all.find((t) => !t.completedAt && !t.parentId)!;
+			expect(drift(optimistic, store)).toEqual({});
+			expect(next.generatedFromTaskId).toBe(task.id);
+			expectInSyncExceptGeneratedFrom(store, list.id);
+		});
+
+		it('update with applyTo future: a date change moves the rule’s weekday on the server', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			const { store, port } = setup(list.id);
+
+			const done = store.update(
+				task.id,
+				{ planned: { kind: 'date', date: '2026-11-10' } },
+				'future'
+			);
+			const optimistic = snapshot(store);
+			await done;
+
+			expect(port.requests[0].body).toMatchObject({ applyTo: 'future' });
+			// Server only: the Recurrence follows the driving date (Monday [1] → Tuesday [2]).
+			expect(drift(optimistic, store)).toEqual({ 'Water plants': ['recurrence'] });
+			expect(store.get(task.id)?.recurrence).toMatchObject({ weekdays: [2] });
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('update with applyTo occurrence: the series template is the server’s to keep', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			const { store, port } = setup(list.id);
+
+			const done = store.update(task.id, { title: 'Water ferns' }, 'occurrence');
+			const optimistic = snapshot(store);
+			await done;
+
+			expect(port.requests[0].body).toMatchObject({ applyTo: 'occurrence' });
+			// Server only: the template keeps the old title for later Occurrences.
+			expect(drift(optimistic, store)).toEqual({ 'Water ferns': ['seriesTemplate'] });
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('add a Subtask to a recurring Task with applyTo occurrence: the parent’s template changes', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			const { store, port } = setup(list.id);
+
+			const id = store.add(list.id, 'Wipe leaves', task.id, 'occurrence');
+			const optimistic = snapshot(store);
+			await port.idle();
+
+			expect(port.requests[0].body).toMatchObject({ applyTo: 'occurrence' });
+			expectAgreement(
+				optimistic.find((t) => t.id === id)!,
+				store.get(id)
+			);
+			// Server only: the parent now carries a template that leaves this Subtask out of later
+			// Occurrences.
+			expect(drift(optimistic, store)).toEqual({ 'Water plants': ['seriesTemplate'] });
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('add a Subtask to a recurring Task with applyTo future: nothing differs but the timestamps', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const { task } = plants(list.id);
+			const { store, port } = setup(list.id);
+
+			store.add(list.id, 'Wipe leaves', task.id, 'future');
+			const optimistic = snapshot(store);
+			await port.idle();
+
+			expect(port.requests[0].body).toMatchObject({ applyTo: 'future' });
+			expect(drift(optimistic, store)).toEqual({});
+			expectInSyncWithServer(store, list.id);
+		});
+
+		it('update: a Recurrence without weekdays gets the driving date’s weekday from the server', async () => {
+			const list = createList(scope(), { name: 'Groceries' });
+			const task = seed(list.id, 'Water plants');
+			const { store } = setup(list.id);
+
+			const done = store.update(task.id, {
+				planned: { kind: 'date', date: '2026-11-09' },
+				recurrence: { frequency: 'weekly', interval: 1, anchor: 'schedule', end: { kind: 'never' } }
+			});
+			const optimistic = snapshot(store);
+			await done;
+
+			// Server only: the weekday (2026-11-09 is a Monday) and the new series.
+			expect(optimistic[0].recurrence).not.toHaveProperty('weekdays');
+			expect(drift(optimistic, store)).toEqual({ 'Water plants': ['recurrence', 'seriesId'] });
+			expect(store.get(task.id)?.recurrence).toMatchObject({ weekdays: [1] });
+			expectInSyncWithServer(store, list.id);
 		});
 	});
 });
