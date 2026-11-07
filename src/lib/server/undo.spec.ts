@@ -743,6 +743,19 @@ describe('a Subtask moved out, and a later change to a sibling', () => {
 		expect(() => undoLatest(changed.scope, refused)).toThrow(UndoConflictError);
 	});
 
+	it('an unchanged generated parent: Undo applies, but refuses once a sibling changed (the move made it keep a template)', () => {
+		const family = generated(setUp());
+		const undoId = moveFernOut(family);
+		expect(undoLatest(family.scope, undoId)).toBeDefined();
+
+		const changed = generated(setUp());
+		const other = add(changed.scope, changed.listId, 'Reed', changed.parent.id);
+		const refused = moveFernOut(changed);
+		reorderReed(changed, other);
+
+		expect(() => undoLatest(changed.scope, refused)).toThrow(UndoConflictError);
+	});
+
 	it('a recurring parent the move made keep a template: Undo refuses', () => {
 		const family = setUp();
 		const reed = add(family.scope, family.listId, 'Reed', family.parent.id);
@@ -750,6 +763,150 @@ describe('a Subtask moved out, and a later change to a sibling', () => {
 		reorderReed(family, reed);
 
 		expect(() => undoLatest(family.scope, undoId)).toThrow(UndoConflictError);
+	});
+});
+
+describe('moving to another List, and Undo', () => {
+	const toWork = (family: Family) => createList(family.scope, { name: 'Work' }).id;
+
+	it('an Occurrence: the Lists are as before, and reopening the previous one makes it give way', () => {
+		const family = setUp();
+		const previous = family.parent;
+		const { parent: current } = generated(family);
+		const work = toWork(family);
+
+		expectUndoRestoresLists(family.scope, [family.listId, work], () =>
+			moveTask(family.scope, current.id, { listId: work, parentId: null })
+		);
+
+		expect(getTask(family.scope, current.id)?.changedSinceGenerated).toBe(false);
+		const reopened = reopenTask(family.scope, previous.id)!;
+		expect(reopened.deleted).toContain(current.id);
+		expect(getTask(family.scope, current.id)).toBeUndefined();
+	});
+
+	it.each([
+		{ state: 'a template of its own', make: () => withTemplate(setUp()) },
+		{ state: 'no template yet', make: () => setUp() },
+		{ state: 'an unchanged generated parent', make: () => generated(setUp()) }
+	])('a Subtask of a recurring Task with $state: the parent is as before', ({ make }) => {
+		const family = make();
+		const work = toWork(family);
+		const parentBefore = getTask(family.scope, family.parent.id);
+
+		expectUndoRestoresLists(family.scope, [family.listId, work], () =>
+			moveTask(family.scope, family.fern.id, { listId: work, parentId: null })
+		);
+
+		const parent = getTask(family.scope, family.parent.id);
+		expect(parent?.seriesTemplate).toEqual(parentBefore?.seriesTemplate);
+		expect(parent?.changedSinceGenerated).toBe(parentBefore?.changedSinceGenerated);
+	});
+
+	it('a Task with Subtasks: they come back with it', () => {
+		const family = setUp(false);
+		const work = toWork(family);
+
+		expectUndoRestoresLists(family.scope, [family.listId, work], () =>
+			moveTask(family.scope, family.parent.id, { listId: work, parentId: null })
+		);
+
+		const subtasks = getListTasks(family.scope, family.listId).filter(
+			(task) => task.parentId === family.parent.id
+		);
+		expect(subtasks.map((task) => task.title)).toEqual(['Fern', 'Cactus']);
+	});
+
+	it('a Task back to its place, though its old neighbours have moved or gone', () => {
+		const family = setUp(false);
+		const work = toWork(family);
+		const undoId = undoable(family.scope, () =>
+			moveTask(family.scope, family.parent.id, { listId: work, parentId: null })
+		)!.undoId!;
+		deleteTask(family.scope, family.moss.id);
+		const bread = add(family.scope, family.listId, 'Bread');
+
+		undoLatest(family.scope, undoId);
+
+		const titles = getListTasks(family.scope, family.listId)
+			.filter((task) => task.parentId === null)
+			.map((task) => task.title);
+		expect(titles).toHaveLength(2);
+		expect(titles).toContain('Water plants');
+		expect(titles).toContain(bread.title);
+	});
+
+	it('the target List deleted since: nothing to undo, and nothing written', () => {
+		const family = setUp();
+		const work = toWork(family);
+		const undoId = undoable(family.scope, () =>
+			moveTask(family.scope, family.moss.id, { listId: work, parentId: null })
+		)!.undoId!;
+		deleteList(family.scope, work);
+		const before = family.db.select().from(tasks).all();
+
+		expect(undoLatest(family.scope, undoId)).toBeUndefined();
+
+		expect(family.db.select().from(tasks).all()).toEqual(before);
+	});
+});
+
+describe('a Subtask moved into a new parent, and a later change to a sibling', () => {
+	const newParent = (family: Family, recurring: boolean) => {
+		const parent = add(family.scope, family.listId, 'Feed pets');
+		if (recurring) {
+			updateTask(family.scope, parent.id, { planned: dateOnly('2026-11-02'), recurrence: weekly });
+		}
+		const dog = add(family.scope, family.listId, 'Dog', parent.id);
+		return { parent, dog };
+	};
+	/** Moves a Task from another List in as a Subtask: the endpoint records only moves between Lists. */
+	const moveMossIn = (family: Family, parentId: string) => {
+		const work = createList(family.scope, { name: 'Work' }).id;
+		const visitor = add(family.scope, work, 'Mop');
+		return undoable(family.scope, () =>
+			moveTask(family.scope, visitor.id, { listId: family.listId, parentId })
+		)!.undoId!;
+	};
+
+	it('a plain parent: Undo applies, whatever happened to the sibling', () => {
+		const family = setUp(false);
+		const { parent, dog } = newParent(family, false);
+		const undoId = moveMossIn(family, parent.id);
+		updateTask(family.scope, dog.id, { title: 'Hound' });
+		deleteTask(family.scope, dog.id);
+		add(family.scope, family.listId, 'Cat', parent.id);
+
+		expect(undoLatest(family.scope, undoId)).toBeDefined();
+
+		expect(getListTasks(family.scope, family.listId).map((t) => t.title)).not.toContain('Mop');
+	});
+
+	it('a recurring parent the move made keep a template: a changed sibling refuses', () => {
+		const family = setUp();
+		const { parent, dog } = newParent(family, true);
+		const undoId = moveMossIn(family, parent.id);
+		expect(getTask(family.scope, parent.id)?.seriesTemplate).not.toBeNull();
+		updateTask(family.scope, dog.id, { title: 'Hound' }, 'occurrence');
+
+		expect(() => undoLatest(family.scope, undoId)).toThrow(UndoConflictError);
+	});
+
+	it('a recurring parent with a template already: Undo applies unless that template changed', () => {
+		const applies = setUp();
+		const first = newParent(applies, true);
+		updateTask(applies.scope, first.dog.id, { title: 'Pup' }, 'occurrence');
+		const undoId = moveMossIn(applies, first.parent.id);
+		deleteTask(applies.scope, first.dog.id, 'occurrence');
+
+		const refuses = setUp();
+		const second = newParent(refuses, true);
+		updateTask(refuses.scope, second.dog.id, { title: 'Pup' }, 'occurrence');
+		const refusedId = moveMossIn(refuses, second.parent.id);
+		updateTask(refuses.scope, second.dog.id, { title: 'Hound' }, 'future');
+
+		expect(undoLatest(applies.scope, undoId)).toBeDefined();
+		expect(() => undoLatest(refuses.scope, refusedId)).toThrow(UndoConflictError);
 	});
 });
 

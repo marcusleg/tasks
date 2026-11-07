@@ -11,34 +11,13 @@ import { InvalidInputError } from './validation';
 
 /**
  * Where a Task goes: a List, a parent (`null` for top level), and right before or after one of
- * its new siblings, or back at a Custom Order key it had before (`position`, for Undo).
+ * its new siblings.
  */
 export interface TaskMove {
 	listId: string;
 	parentId: string | null;
 	before?: string;
 	after?: string;
-	/**
-	 * A position key the Task held earlier among these siblings: Undo puts it back there, which
-	 * still works when its old neighbours have moved or gone since. If a sibling holds that key
-	 * by now, the Task goes right before that sibling.
-	 */
-	position?: string;
-}
-
-const MAX_POSITION_LENGTH = 200;
-
-/** Whether `key` is a valid Custom Order key (a `fractional-indexing` key). */
-export function isPositionKey(key: unknown): key is string {
-	if (typeof key !== 'string' || key.length > MAX_POSITION_LENGTH) return false;
-	// The library's base-62 digits; it doesn't check every character itself.
-	if (!/^[0-9A-Za-z]+$/.test(key)) return false;
-	try {
-		generateKeyBetween(key, null);
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 /** The fields the move rules read. */
@@ -84,12 +63,6 @@ export function moveError(tasks: readonly Movable[], id: string, move: TaskMove)
 	if (move.before !== undefined && move.after !== undefined) {
 		return 'Give before or after, not both';
 	}
-	if (move.position !== undefined) {
-		if (move.before !== undefined || move.after !== undefined) {
-			return 'Give a position or a neighbour, not both';
-		}
-		if (!isPositionKey(move.position)) return 'Invalid position';
-	}
 	const neighbourId = move.before ?? move.after;
 	if (neighbourId !== undefined) {
 		if (neighbourId === id) return 'A Task can’t be moved next to itself';
@@ -109,18 +82,13 @@ export function moveChanges(tasks: readonly Movable[], id: string, move: TaskMov
 		.filter((t) => t.id !== id && t.listId === move.listId && t.parentId === move.parentId)
 		.sort(byCustomOrder);
 	const task = tasks.find((t) => t.id === id) as Movable;
-	let position: string;
-	if (move.position !== undefined) {
-		position = restoredPosition(siblings, move.position);
-	} else {
-		const [lower, upper] = bounds(siblings, move);
-		const stays =
-			task.listId === move.listId &&
-			task.parentId === move.parentId &&
-			(!lower || byCustomOrder(lower, task) < 0) &&
-			(!upper || byCustomOrder(task, upper) < 0);
-		position = stays ? task.position : keyBetween(lower, upper);
-	}
+	const [lower, upper] = bounds(siblings, move);
+	const stays =
+		task.listId === move.listId &&
+		task.parentId === move.parentId &&
+		(!lower || byCustomOrder(lower, task) < 0) &&
+		(!upper || byCustomOrder(task, upper) < 0);
+	const position = stays ? task.position : keyBetween(lower, upper);
 	const moved: MoveChange = { id, listId: move.listId, parentId: move.parentId, position };
 	// Subtasks follow their parent into another List, keeping their order.
 	const subtasks = tasks
