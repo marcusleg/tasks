@@ -1,27 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
 import type { SerializedTask } from '#lib/domain/tasks.js';
-import { api } from './api.js';
 import { ScopedTasks, type ApplyTo, type ScopeQuestion } from './occurrence-scope.svelte';
+import type { TaskPort } from './task-port.js';
 import { TaskStore } from './tasks.svelte';
 import { Toasts } from './toasts.svelte';
 
-vi.mock('$app/navigation', () => ({ invalidate: vi.fn() }));
-vi.mock('./api.js', () => {
+/** A port that records its calls and answers with no changes. */
+function fakePort() {
 	const changes = () => Promise.resolve({ upserted: [], deleted: [] });
 	return {
-		api: {
-			createTask: vi.fn(changes),
-			updateTask: vi.fn(changes),
-			completeTask: vi.fn(changes),
-			reopenTask: vi.fn(changes),
-			moveTask: vi.fn(changes),
-			deleteTask: vi.fn(() =>
-				Promise.resolve({ upserted: [], deleted: [], removed: [], next: null })
-			)
-		}
-	};
-});
+		createTask: vi.fn<TaskPort['createTask']>(changes),
+		updateTask: vi.fn<TaskPort['updateTask']>(changes),
+		completeTask: vi.fn<TaskPort['completeTask']>(changes),
+		reopenTask: vi.fn<TaskPort['reopenTask']>(changes),
+		moveTask: vi.fn<TaskPort['moveTask']>(changes),
+		deleteTask: vi.fn<TaskPort['deleteTask']>(() =>
+			Promise.resolve({ upserted: [], deleted: [], removed: [], next: null })
+		),
+		restoreTasks: vi.fn<TaskPort['restoreTasks']>(changes),
+		deleteCompletedTasks: vi.fn<TaskPort['deleteCompletedTasks']>(changes),
+		reload: vi.fn<TaskPort['reload']>(() => Promise.resolve())
+	} satisfies TaskPort;
+}
+
+let api: ReturnType<typeof fakePort>;
 
 const RULE = { frequency: 'daily', interval: 1, end: { kind: 'never' } } as SerializedRecurrence;
 
@@ -51,7 +54,7 @@ function task(id: string, fields: Partial<SerializedTask> = {}): SerializedTask 
 }
 
 function setup(...tasks: SerializedTask[]) {
-	const store = new TaskStore(() => tasks, new Toasts());
+	const store = new TaskStore(() => tasks, new Toasts(), api);
 	const asked: ScopeQuestion[] = [];
 	const answers: (ApplyTo | null)[] = [];
 	const prompt = {
@@ -66,7 +69,7 @@ function setup(...tasks: SerializedTask[]) {
 const recurring = () => task('series', { recurrence: RULE });
 
 beforeEach(() => {
-	vi.clearAllMocks();
+	api = fakePort();
 });
 
 describe('what the store sends for the scope', () => {
@@ -76,7 +79,7 @@ describe('what the store sends for the scope', () => {
 		await scopes.add('list', 'Fern', 'series');
 
 		expect(api.createTask).toHaveBeenCalledOnce();
-		expect(vi.mocked(api.createTask).mock.calls[0][0]).toMatchObject({
+		expect(api.createTask.mock.calls[0][0]).toMatchObject({
 			title: 'Fern',
 			parentId: 'series',
 			applyTo: 'occurrence'
@@ -87,7 +90,7 @@ describe('what the store sends for the scope', () => {
 		const { scopes } = setup(task('plain'));
 		await scopes.add('list', 'Fern', 'plain');
 
-		expect(vi.mocked(api.createTask).mock.calls[0][0]).not.toHaveProperty('applyTo');
+		expect(api.createTask.mock.calls[0][0]).not.toHaveProperty('applyTo');
 	});
 
 	it('updates and deletes with the answer', async () => {
@@ -97,8 +100,8 @@ describe('what the store sends for the scope', () => {
 		await scopes.remove('series');
 		await vi.waitFor(() => expect(api.deleteTask).toHaveBeenCalled());
 
-		expect(vi.mocked(api.updateTask).mock.calls[0][2]).toBe('occurrence');
-		expect(vi.mocked(api.deleteTask).mock.calls[0][1]).toMatchObject({ applyTo: 'future' });
+		expect(api.updateTask.mock.calls[0][2]).toBe('occurrence');
+		expect(api.deleteTask.mock.calls[0][1]).toMatchObject({ applyTo: 'future' });
 	});
 });
 
@@ -109,7 +112,7 @@ describe('exemptions, through the real store', () => {
 
 		expect(prompt.ask).not.toHaveBeenCalled();
 		expect(api.completeTask).toHaveBeenCalledOnce();
-		expect(vi.mocked(api.completeTask).mock.calls[0]).toHaveLength(2); // id and time zone only
+		expect(api.completeTask.mock.calls[0]).toHaveLength(2); // id and time zone only
 	});
 
 	it('reopening a recurring Task is not asked about and is sent once', async () => {
@@ -118,7 +121,7 @@ describe('exemptions, through the real store', () => {
 
 		expect(prompt.ask).not.toHaveBeenCalled();
 		expect(api.reopenTask).toHaveBeenCalledOnce();
-		expect(vi.mocked(api.reopenTask).mock.calls[0]).toEqual(['series']);
+		expect(api.reopenTask.mock.calls[0]).toEqual(['series']);
 	});
 
 	it('moving a recurring Task is not asked about and is sent once', async () => {
@@ -127,7 +130,7 @@ describe('exemptions, through the real store', () => {
 
 		expect(prompt.ask).not.toHaveBeenCalled();
 		expect(api.moveTask).toHaveBeenCalledOnce();
-		expect(vi.mocked(api.moveTask).mock.calls[0][1]).not.toHaveProperty('applyTo');
+		expect(api.moveTask.mock.calls[0][1]).not.toHaveProperty('applyTo');
 	});
 
 	it('moving a Subtask of a recurring Task is not asked about either', async () => {

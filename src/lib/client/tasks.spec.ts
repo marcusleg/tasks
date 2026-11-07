@@ -16,6 +16,7 @@ import {
 
 import { createTestDb, insertUser } from '#lib/server/testing/index.js';
 import { inProcessTaskPort } from '#lib/server/testing/in-process-task-port.js';
+import type { ApplyTo, Scope } from './occurrence-scope.svelte';
 import { TaskStore } from './tasks.svelte';
 import { Toasts } from './toasts.svelte';
 
@@ -33,6 +34,10 @@ beforeEach(() => {
 });
 
 const scope = () => ({ db, userId: user.id });
+
+// Only `ScopedTasks` makes a `Scope`; these specs test the store, so they cast one.
+const asked = (applyTo?: ApplyTo) => ({ applyTo }) as Scope;
+const noScope = asked();
 
 /** The Lists the page shows; their Tasks are the page data. */
 let shown: string[];
@@ -102,7 +107,7 @@ describe('TaskStore through the in-process adapter', () => {
 			seed(chores.id, 'Mop');
 			const { store, port } = setupOn([list.id, chores.id]);
 
-			const id = store.add(list.id, '  Milk ');
+			const id = store.add(list.id, '  Milk ', null, noScope);
 			const optimistic = { ...store.get(id)! };
 			await port.idle();
 
@@ -118,7 +123,7 @@ describe('TaskStore through the in-process adapter', () => {
 			seed(list.id, 'Cake', parent.id);
 			const { store, port } = setup(list.id);
 
-			const id = store.add(list.id, 'Candles', parent.id);
+			const id = store.add(list.id, 'Candles', parent.id, noScope);
 			const optimistic = { ...store.get(id)! };
 			await port.idle();
 
@@ -132,13 +137,17 @@ describe('TaskStore through the in-process adapter', () => {
 			const task = seed(list.id, 'Milk');
 			const { store } = setup(list.id);
 
-			const done = store.update(task.id, {
-				title: 'Oat milk',
-				description: 'Barista edition',
-				priority: 'high',
-				planned: { kind: 'date', date: '2026-11-09' },
-				due: { kind: 'timed', dateTime: '2026-11-10T18:00', timeZone: 'Europe/Berlin' }
-			});
+			const done = store.update(
+				task.id,
+				{
+					title: 'Oat milk',
+					description: 'Barista edition',
+					priority: 'high',
+					planned: { kind: 'date', date: '2026-11-09' },
+					due: { kind: 'timed', dateTime: '2026-11-10T18:00', timeZone: 'Europe/Berlin' }
+				},
+				noScope
+			);
 			const optimistic = { ...store.get(task.id)! };
 			expect(await done).toBe(true);
 
@@ -151,16 +160,20 @@ describe('TaskStore through the in-process adapter', () => {
 			const task = seed(list.id, 'Water plants');
 			const { store, port } = setup(list.id);
 
-			const done = store.update(task.id, {
-				planned: { kind: 'date', date: '2026-11-09' },
-				recurrence: {
-					frequency: 'weekly',
-					interval: 1,
-					weekdays: [1],
-					anchor: 'schedule',
-					end: { kind: 'never' }
-				}
-			});
+			const done = store.update(
+				task.id,
+				{
+					planned: { kind: 'date', date: '2026-11-09' },
+					recurrence: {
+						frequency: 'weekly',
+						interval: 1,
+						weekdays: [1],
+						anchor: 'schedule',
+						end: { kind: 'never' }
+					}
+				},
+				noScope
+			);
 			const optimistic = { ...store.get(task.id)! };
 			expect(await done).toBe(true);
 			await port.idle();
@@ -237,7 +250,7 @@ describe('TaskStore through the in-process adapter', () => {
 			seed(list.id, 'Bread');
 			const { store, port } = setup(list.id);
 
-			const done = store.remove(parent.id);
+			const done = store.remove(parent.id, noScope);
 			const optimistic = store.all.map((task) => task.id);
 			expect(await done).toBe(true);
 
@@ -253,7 +266,7 @@ describe('TaskStore through the in-process adapter', () => {
 			const { store, toasts, port } = setup(list.id);
 			const before = store.all;
 
-			await store.remove(parent.id);
+			await store.remove(parent.id, noScope);
 			toasts.act(toasts.actionable!.id);
 			await port.idle();
 
@@ -370,8 +383,8 @@ describe('TaskStore through the in-process adapter', () => {
 				beforeRequest: () => new Promise<void>((resolve) => releases.push(resolve))
 			});
 
-			const id = store.add(list.id, 'Milk');
-			void store.update(id, { title: 'Oat milk' });
+			const id = store.add(list.id, 'Milk', null, noScope);
+			void store.update(id, { title: 'Oat milk' }, noScope);
 			void store.complete(id);
 			await vi.waitFor(() => expect(releases).toHaveLength(1));
 			expect(port.requests).toEqual([]);
@@ -416,8 +429,8 @@ describe('TaskStore through the in-process adapter', () => {
 			const { store, toasts, port } = setup(list.id);
 			db.run(`delete from tasks where id = '${milk.id}'`);
 
-			const failed = store.update(milk.id, { title: 'Oat milk' });
-			const id = store.add(list.id, 'Bread');
+			const failed = store.update(milk.id, { title: 'Oat milk' }, noScope);
+			const id = store.add(list.id, 'Bread', null, noScope);
 			expect(await failed).toBe(false);
 			await port.idle();
 
@@ -567,7 +580,7 @@ describe('TaskStore through the in-process adapter', () => {
 			const { store, toasts, port } = setup(list.id);
 			const before = snapshot(store);
 
-			const done = store.remove(task.id, 'occurrence');
+			const done = store.remove(task.id, asked('occurrence'));
 			const optimistic = snapshot(store);
 			await done;
 
@@ -593,7 +606,7 @@ describe('TaskStore through the in-process adapter', () => {
 			const { task } = plants(list.id);
 			const { store } = setup(list.id);
 
-			const done = store.remove(task.id, 'future');
+			const done = store.remove(task.id, asked('future'));
 			const optimistic = snapshot(store);
 			await done;
 
@@ -608,7 +621,7 @@ describe('TaskStore through the in-process adapter', () => {
 			completeTask(scope(), task.id);
 			const { store } = setup(list.id);
 
-			await store.remove(task.id);
+			await store.remove(task.id, noScope);
 
 			// Known drift (see `expectInSyncExceptGeneratedFrom`).
 			const next = store.all.find((t) => !t.completedAt && !t.parentId)!;
@@ -643,7 +656,7 @@ describe('TaskStore through the in-process adapter', () => {
 			const done = store.update(
 				task.id,
 				{ planned: { kind: 'date', date: '2026-11-10' } },
-				'future'
+				asked('future')
 			);
 			const optimistic = snapshot(store);
 			await done;
@@ -660,7 +673,7 @@ describe('TaskStore through the in-process adapter', () => {
 			const { task } = plants(list.id);
 			const { store, port } = setup(list.id);
 
-			const done = store.update(task.id, { title: 'Water ferns' }, 'occurrence');
+			const done = store.update(task.id, { title: 'Water ferns' }, asked('occurrence'));
 			const optimistic = snapshot(store);
 			await done;
 
@@ -675,7 +688,7 @@ describe('TaskStore through the in-process adapter', () => {
 			const { task } = plants(list.id);
 			const { store, port } = setup(list.id);
 
-			const id = store.add(list.id, 'Wipe leaves', task.id, 'occurrence');
+			const id = store.add(list.id, 'Wipe leaves', task.id, asked('occurrence'));
 			const optimistic = snapshot(store);
 			await port.idle();
 
@@ -695,7 +708,7 @@ describe('TaskStore through the in-process adapter', () => {
 			const { task } = plants(list.id);
 			const { store, port } = setup(list.id);
 
-			store.add(list.id, 'Wipe leaves', task.id, 'future');
+			store.add(list.id, 'Wipe leaves', task.id, asked('future'));
 			const optimistic = snapshot(store);
 			await port.idle();
 
@@ -709,10 +722,19 @@ describe('TaskStore through the in-process adapter', () => {
 			const task = seed(list.id, 'Water plants');
 			const { store } = setup(list.id);
 
-			const done = store.update(task.id, {
-				planned: { kind: 'date', date: '2026-11-09' },
-				recurrence: { frequency: 'weekly', interval: 1, anchor: 'schedule', end: { kind: 'never' } }
-			});
+			const done = store.update(
+				task.id,
+				{
+					planned: { kind: 'date', date: '2026-11-09' },
+					recurrence: {
+						frequency: 'weekly',
+						interval: 1,
+						anchor: 'schedule',
+						end: { kind: 'never' }
+					}
+				},
+				noScope
+			);
 			const optimistic = snapshot(store);
 			await done;
 
