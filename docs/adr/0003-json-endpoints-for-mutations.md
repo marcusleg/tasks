@@ -7,5 +7,6 @@ Pages get their data from SvelteKit `load` functions, and every change goes thro
 - Task mutations answer with `TaskChanges` (`{ upserted, deleted }`), so rules that touch several Tasks (completion cascade, next Occurrence) live on the server and the browser just applies the result.
 - The browser generates the ids of new Lists and Tasks (`newId()`), so it can refer to them before the server has answered. A clashing id gets a 409.
 - A store sends its requests one at a time, in order. If one fails, the page data is reloaded (`invalidate('app:tasks')` / `'app:lists'`) and a toast reports it.
+- Open pages pick up changes made elsewhere by reloading their page data when the User comes back to them and every 60 seconds while visible (`src/lib/client/page-refresh.ts`). We assume a User works on one device at a time, so changes made at the same moment on two devices get no special handling: the latest save wins, field by field.
 - Endpoints require an `application/json` body for POST/PATCH, which keeps cross-site form posts out on top of SvelteKit's origin check. The auth guard answers anonymous `/api/` requests with 401, and the client then sends the browser to the login page.
 - If remote functions become stable, the endpoints and `api.ts` can be swapped for `command`s without touching the stores' interface.

@@ -46,9 +46,12 @@
 	// A deep link to a hidden List shows its column on wide screens, until the User changes that
 	// List's visibility; on `/` a hidden last-viewed List is only shown on narrow screens.
 	const reveal = (id: string) => (scrollToFocus ? { id, visible: lists.get(id)?.visible } : null);
-	let revealed = $state(untrack(() => reveal(focus.id)));
+	// The id, not `focus` itself: reloaded page data brings a new object for the same List, and that
+	// is no reason to take the keyboard focus away from whatever the User is doing.
+	const focusId = $derived(focus.id);
+	let revealed = $state(untrack(() => reveal(focusId)));
 	$effect.pre(() => {
-		const id = focus.id;
+		const id = focusId;
 		revealed = untrack(() => reveal(id));
 	});
 	const wideColumn = (list: SerializedList) =>
@@ -72,7 +75,7 @@
 	}
 
 	$effect(() => {
-		const id = focus.id;
+		const id = focusId;
 		if (!scrollToFocus) return;
 		void tick().then(() => {
 			const el = document.querySelector<HTMLElement>(`[data-column="${id}"]`);

@@ -8,7 +8,6 @@ import {
 	getList,
 	getLists,
 	getStartList,
-	setLastViewedList,
 	updateList
 } from './lists';
 import type { UserScope } from './scope';
@@ -174,21 +173,18 @@ describe('getStartList', () => {
 		const first = createList(alice, { name: 'First' });
 		const second = createList(alice, { name: 'Second' });
 
-		expect(getStartList(alice)?.id).toBe(first.id);
-
-		setLastViewedList(alice, second.id);
-		expect(getStartList(alice)?.id).toBe(second.id);
+		expect(getStartList(alice, undefined)?.id).toBe(first.id);
+		expect(getStartList(alice, second.id)?.id).toBe(second.id);
 	});
 
 	it('falls back to the first List when the last-viewed one is deleted', () => {
 		const { alice } = setUp();
 		const first = createList(alice, { name: 'First' });
 		const second = createList(alice, { name: 'Second' });
-		setLastViewedList(alice, second.id);
 
 		deleteList(alice, second.id);
 
-		expect(getStartList(alice)?.id).toBe(first.id);
+		expect(getStartList(alice, second.id)?.id).toBe(first.id);
 	});
 
 	it("ignores another User's List as last viewed", () => {
@@ -196,15 +192,13 @@ describe('getStartList', () => {
 		const mine = createList(bob, { name: 'Mine' });
 		const theirs = createList(alice, { name: 'Theirs' });
 
-		setLastViewedList(bob, theirs.id);
-
-		expect(getStartList(bob)?.id).toBe(mine.id);
+		expect(getStartList(bob, theirs.id)?.id).toBe(mine.id);
 	});
 
 	it('is undefined without Lists', () => {
 		const { alice } = setUp();
 
-		expect(getStartList(alice)).toBeUndefined();
+		expect(getStartList(alice, undefined)).toBeUndefined();
 	});
 });
 

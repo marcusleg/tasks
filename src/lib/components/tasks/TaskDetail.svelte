@@ -77,6 +77,16 @@
 		return () => void save();
 	});
 
+	// A change from another device reaches the drafts, unless they hold edits not saved yet.
+	$effect(() => {
+		const fresh = store.loaded(taskId);
+		if (!fresh) return;
+		untrack(() => {
+			if (title === saved.title) title = saved.title = fresh.title;
+			if (description === saved.description) description = saved.description = fresh.description;
+		});
+	});
+
 	/** What changed since the last save, or `null`. An empty Title is never saved. */
 	function pendingPatch(): { title?: string; description?: string } | null {
 		const patch: { title?: string; description?: string } = {};

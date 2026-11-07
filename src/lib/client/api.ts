@@ -21,7 +21,20 @@ export class ApiError extends Error {
 	}
 }
 
+/** The requests below are all changes. Reloading page data holds back while any are on their way. */
+export const mutations = { inFlight: 0, started: 0 };
+
 async function request<T>(method: string, path: string, body?: object): Promise<T> {
+	mutations.inFlight++;
+	mutations.started++;
+	try {
+		return await send<T>(method, path, body);
+	} finally {
+		mutations.inFlight--;
+	}
+}
+
+async function send<T>(method: string, path: string, body?: object): Promise<T> {
 	const response = await fetch(path, {
 		method,
 		headers: {

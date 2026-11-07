@@ -94,6 +94,14 @@ export class TaskStore {
 		return id ? this.#tasks[id] : undefined;
 	}
 
+	/**
+	 * A Task as the page data has it, which changes only when that is reloaded, not with this
+	 * browser's own edits and their answers.
+	 */
+	loaded(id: string): SerializedTask | undefined {
+		return this.#loaded.find((task) => task.id === id);
+	}
+
 	/** The open top-level Tasks of a List, in Custom Order. */
 	openTasks(listId: string): SerializedTask[] {
 		return openTasksOf(Object.values(this.#tasks), listId);
