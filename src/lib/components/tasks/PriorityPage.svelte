@@ -5,6 +5,7 @@
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { closeTask, openTaskId } from '#lib/client/task-panel.js';
 	import { setTaskStore, TaskStore } from '#lib/client/tasks.svelte.js';
+	import { httpTaskPort } from '#lib/client/task-port.http.js';
 	import { getToasts } from '#lib/client/toasts.svelte.js';
 	import { priorityGroup } from '#lib/domain/priority-view.js';
 	import { PRIORITIES, type Priority, type SerializedTask } from '#lib/domain/tasks.js';
@@ -26,6 +27,7 @@
 		new TaskStore(
 			() => tasks,
 			getToasts(),
+			httpTaskPort,
 			(id) => lists.get(id)?.name
 		)
 	);

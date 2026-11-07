@@ -7,6 +7,7 @@
 	import { setTaskDrag, TaskDrag } from '#lib/client/task-drag.svelte.js';
 	import { closeTask, openTaskId } from '#lib/client/task-panel.js';
 	import { setTaskStore, TaskStore } from '#lib/client/tasks.svelte.js';
+	import { httpTaskPort } from '#lib/client/task-port.http.js';
 	import { getToasts } from '#lib/client/toasts.svelte.js';
 	import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
 	import type { SerializedList } from '#lib/domain/lists.js';
@@ -31,6 +32,7 @@
 		new TaskStore(
 			() => tasks,
 			getToasts(),
+			httpTaskPort,
 			(id) => lists.get(id)?.name
 		)
 	);
