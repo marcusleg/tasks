@@ -29,7 +29,10 @@ import { toTask } from './db/mapping.js';
 import { tasks } from './db/schema.js';
 import { ownedBy, type UserScope } from './scope.js';
 
-/** A change under way; each method finishes it and returns the Tasks the bookkeeping wrote. */
+/**
+ * A change under way; each method finishes it and returns the Tasks the bookkeeping wrote.
+ * Single-use: call one method, once. Another call would edit the template and return `kept` again.
+ */
 export interface OccurrenceChange {
 	/** `subtask` was created under the parent. */
 	added(subtask: Task): Task[];
@@ -72,7 +75,7 @@ export function beginOccurrenceChange(
 	};
 }
 
-/** A move under way. */
+/** A move under way. Single-use: call `moved` once. */
 export interface OccurrenceMove {
 	/** The parents whose Subtask template the move made it keep. */
 	readonly kept: Task[];

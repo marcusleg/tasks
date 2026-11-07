@@ -6,9 +6,10 @@
  * never overwrites newer keystrokes.
  *
  * Completing, deleting and moving a Task to another List offer Undo in a toast (#14), which puts
- * back the exact previous state through the server: Reopen (which also restores the Subtasks the
- * completion closed, and removes the next Occurrence it created), restoring the deleted Tasks,
- * or moving the Task back to its old Custom Order position.
+ * back the previous state through the server. Deleting a Subtask uses the server's Undo (ADR 0004).
+ * The others have yet to move to it: Reopen (which also restores the Subtasks the completion closed,
+ * and removes the next Occurrence it created), restoring the deleted Tasks, or moving the Task back
+ * to its old Custom Order position.
  *
  * Created by a page from its `load` data and shared with the components below it through
  * context ({@link setTaskStore} / {@link getTaskStore}). The page calls {@link TaskStore.dispose}
@@ -241,6 +242,10 @@ export class TaskStore {
 	 * positions, dates, completion and everything else). `scope` "occurrence" skips a recurring
 	 * Task's current Occurrence: the next one comes with the server's answer, and Undo puts the
 	 * skipped one back in its place.
+	 *
+	 * Undo of a Subtask also puts back what deleting it did to its parent, which comes with Undo's
+	 * answer. If the state has moved on, the failure reloads the page data, which takes the Subtask
+	 * away again.
 	 */
 	remove(id: string, scope: Scope): Promise<boolean> {
 		const local = [this.#tasks[id], ...this.all.filter((task) => task.parentId === id)].filter(
@@ -249,6 +254,8 @@ export class TaskStore {
 		this.apply({ upserted: [], deleted: local.map((task) => task.id) });
 		let removed: SerializedTask[] | undefined;
 		let next: string | null = null;
+		let undoId: string | null = null;
+		const isSubtask = Boolean(local[0]?.parentId);
 		const done = this.#send('delete the task', async () => {
 			const answer = await this.#port.deleteTask(id, {
 				applyTo: scope.applyTo,
@@ -256,10 +263,19 @@ export class TaskStore {
 			});
 			removed = answer.removed;
 			next = answer.next;
+			undoId = answer.undo;
 			return answer;
 		});
 		this.#offerUndo('Task deleted', done, () => {
 			this.apply({ upserted: local, deleted: [] });
+			if (isSubtask) {
+				// Queued after the delete, so its answer (with `undo`) is in by then.
+				void this.#send('undo', () => {
+					if (!undoId) throw new Error('The task wasn’t deleted');
+					return this.#port.undo(undoId);
+				});
+				return;
+			}
 			// Queued after the delete, so its answer (with `removed` and `next`) is in by then; the
 			// restore's answer removes the next Occurrence it replaces.
 			void this.#send('restore the task', () => {

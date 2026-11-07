@@ -29,6 +29,13 @@
       "when": 1794058662681,
       "tag": "0003_device_last_viewed_list",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794062624304,
+      "tag": "0004_undo_records",
+      "breakpoints": true
     }
   ]
 }
