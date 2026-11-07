@@ -36,6 +36,7 @@ import { newId, timestamp } from '#lib/domain/validation.js';
 import type { TaskPatch, TaskPort } from './task-port.js';
 import { browserTimeZone } from './clock.svelte.js';
 import type { Scope } from './occurrence-scope.svelte.js';
+import { OptimisticQueue } from './optimistic-queue.js';
 import type { Toasts } from './toasts.svelte.js';
 
 type ById = Record<string, SerializedTask>;
@@ -65,6 +66,7 @@ export class TaskStore {
 		this.#source = source;
 		this.#toasts = toasts;
 		this.#port = port;
+		this.#queue = new OptimisticQueue(toasts, () => port.reload());
 		this.#listName = listName;
 	}
 
@@ -150,25 +152,11 @@ export class TaskStore {
 		this.#tasks = next;
 	}
 
-	/**
-	 * Requests go out one at a time, in order, so e.g. completing a Task that was just added can't
-	 * overtake the request that creates it.
-	 */
-	#queue: Promise<unknown> = Promise.resolve();
+	/** Requests go out one at a time, in order (see {@link OptimisticQueue}). */
+	readonly #queue: OptimisticQueue;
 
 	#send(what: string, request: () => Promise<TaskChanges>): Promise<boolean> {
-		const result = this.#queue.then(async () => {
-			try {
-				this.apply(await request());
-				return true;
-			} catch (cause) {
-				this.#toasts.failed(what, cause);
-				await this.#port.reload();
-				return false;
-			}
-		});
-		this.#queue = result;
-		return result;
+		return this.#queue.send(what, request, (changes) => this.apply(changes));
 	}
 
 	/**

@@ -1,9 +1,9 @@
 /**
  * The browser's copy of the User's Lists (sidebar, List headers), with optimistic mutations like
- * {@link TaskStore}. Created by the root layout from its `load` data and shared through context.
+ * {@link TaskStore}: each change is applied locally at once, then sent through the shared
+ * {@link OptimisticQueue}, one request at a time and in order. Created by the root layout from its `load` data and shared through context.
  */
 import { getContext, setContext } from 'svelte';
-import { invalidate } from '$app/navigation';
 import { generateKeyBetween } from 'fractional-indexing';
 import {
 	parseListName,
@@ -14,19 +14,21 @@ import {
 	type SortMode
 } from '#lib/domain/lists.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
-import { LISTS_DEPENDENCY } from '#lib/dependencies.js';
-import { api } from './api.js';
+import type { ListPort } from './list-port.js';
+import { OptimisticQueue } from './optimistic-queue.js';
 import type { Toasts } from './toasts.svelte.js';
 
 export class ListStore {
 	readonly #source: () => SerializedList[];
-	readonly #toasts: Toasts;
+	readonly #queue: OptimisticQueue;
+	readonly #port: ListPort;
 	#loaded = $derived.by(() => this.#source());
 	#lists = $derived<SerializedList[]>(this.#loaded);
 
-	constructor(source: () => SerializedList[], toasts: Toasts) {
+	constructor(source: () => SerializedList[], toasts: Toasts, port: ListPort) {
 		this.#source = source;
-		this.#toasts = toasts;
+		this.#port = port;
+		this.#queue = new OptimisticQueue(toasts, () => port.reload());
 	}
 
 	/** The User's Lists in List order. */
@@ -40,11 +42,6 @@ export class ListStore {
 
 	#replace(list: SerializedList): void {
 		this.#lists = this.#lists.map((existing) => (existing.id === list.id ? list : existing));
-	}
-
-	async #fail(what: string, cause: unknown): Promise<void> {
-		this.#toasts.failed(what, cause);
-		await invalidate(LISTS_DEPENDENCY);
 	}
 
 	/**
@@ -67,14 +64,12 @@ export class ListStore {
 				updatedAt: now
 			}
 		];
-		try {
-			const { list } = await api.createList({ id, name });
-			this.#replace(list);
-			return id;
-		} catch (cause) {
-			await this.#fail('create the list', cause);
-			return undefined;
-		}
+		const ok = await this.#queue.send(
+			'create the list',
+			() => this.#port.createList({ id, name }),
+			({ list }) => this.#replace(list)
+		);
+		return ok ? id : undefined;
 	}
 
 	/** Changes a List's name, Sort Mode or visibility. Throws `InvalidInputError` for a bad name. */
@@ -86,13 +81,11 @@ export class ListStore {
 		if (!current) return false;
 		const name = patch.name === undefined ? undefined : parseListName(patch.name);
 		this.#replace({ ...current, ...patch, ...(name === undefined ? {} : { name }) });
-		try {
-			this.#replace((await api.updateList(id, patch)).list);
-			return true;
-		} catch (cause) {
-			await this.#fail('save the list', cause);
-			return false;
-		}
+		return this.#queue.send(
+			'save the list',
+			() => this.#port.updateList(id, patch),
+			({ list }) => this.#replace(list)
+		);
 	}
 
 	/** Moves a List next to another one. Resolves to whether it worked. */
@@ -100,25 +93,21 @@ export class ListStore {
 		const current = this.get(id);
 		if (!current) return false;
 		this.#replace({ ...current, position: positionForMove(this.#lists, id, move) });
-		try {
-			this.#replace((await api.updateList(id, move)).list);
-			return true;
-		} catch (cause) {
-			await this.#fail('move the list', cause);
-			return false;
-		}
+		return this.#queue.send(
+			'move the list',
+			() => this.#port.updateList(id, move),
+			({ list }) => this.#replace(list)
+		);
 	}
 
 	/** Deletes a List (and its Tasks). Resolves once the server has deleted it. */
 	async remove(id: string): Promise<boolean> {
 		this.#lists = this.#lists.filter((list) => list.id !== id);
-		try {
-			await api.deleteList(id);
-			return true;
-		} catch (cause) {
-			await this.#fail('delete the list', cause);
-			return false;
-		}
+		return this.#queue.send(
+			'delete the list',
+			() => this.#port.deleteList(id),
+			() => {}
+		);
 	}
 }
 

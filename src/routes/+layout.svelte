@@ -10,6 +10,7 @@
 	import ScopeDialog from '#lib/components/ScopeDialog.svelte';
 	import { ScopePrompt, setScopePrompt } from '#lib/client/occurrence-scope.svelte.js';
 	import { ListStore, setListStore } from '#lib/client/lists.svelte.js';
+	import { httpListPort } from '#lib/client/list-port.http.js';
 	import { startPageRefresh } from '#lib/client/page-refresh.js';
 	import { setToasts, Toasts as ToastQueue } from '#lib/client/toasts.svelte.js';
 	import { onMount } from 'svelte';
@@ -20,7 +21,7 @@
 	let { data, children }: LayoutProps = $props();
 
 	const toasts = setToasts(new ToastQueue());
-	setListStore(new ListStore(() => data.lists, toasts));
+	setListStore(new ListStore(() => data.lists, toasts, httpListPort));
 	const scopePrompt = setScopePrompt(new ScopePrompt());
 
 	onMount(() => {
