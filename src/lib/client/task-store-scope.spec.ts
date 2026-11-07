@@ -1,0 +1,143 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
+import type { SerializedTask } from '#lib/domain/tasks.js';
+import { ScopedTasks, type ApplyTo, type ScopeQuestion } from './occurrence-scope.svelte';
+import type { TaskPort } from './task-port.js';
+import { TaskStore } from './tasks.svelte';
+import { Toasts } from './toasts.svelte';
+
+/** A port that records its calls and answers with no changes. */
+function fakePort() {
+	const changes = () => Promise.resolve({ upserted: [], deleted: [] });
+	return {
+		createTask: vi.fn<TaskPort['createTask']>(changes),
+		updateTask: vi.fn<TaskPort['updateTask']>(changes),
+		completeTask: vi.fn<TaskPort['completeTask']>(changes),
+		reopenTask: vi.fn<TaskPort['reopenTask']>(changes),
+		moveTask: vi.fn<TaskPort['moveTask']>(changes),
+		deleteTask: vi.fn<TaskPort['deleteTask']>(() =>
+			Promise.resolve({ upserted: [], deleted: [], removed: [], next: null })
+		),
+		restoreTasks: vi.fn<TaskPort['restoreTasks']>(changes),
+		deleteCompletedTasks: vi.fn<TaskPort['deleteCompletedTasks']>(changes),
+		reload: vi.fn<TaskPort['reload']>(() => Promise.resolve())
+	} satisfies TaskPort;
+}
+
+let api: ReturnType<typeof fakePort>;
+
+const RULE = { frequency: 'daily', interval: 1, end: { kind: 'never' } } as SerializedRecurrence;
+
+function task(id: string, fields: Partial<SerializedTask> = {}): SerializedTask {
+	return {
+		id,
+		listId: 'list',
+		parentId: null,
+		title: id,
+		description: '',
+		position: 'a0',
+		planned: { kind: 'date', date: '2027-03-10' },
+		due: null,
+		priority: null,
+		completedAt: null,
+		completedByCascade: false,
+		recurrence: null,
+		seriesId: null,
+		occurrencesSoFar: 1,
+		generatedFromTaskId: null,
+		changedSinceGenerated: false,
+		seriesTemplate: null,
+		createdAt: '2027-01-01T00:00:00.000Z',
+		updatedAt: '2027-01-01T00:00:00.000Z',
+		...fields
+	} as SerializedTask;
+}
+
+function setup(...tasks: SerializedTask[]) {
+	const store = new TaskStore(() => tasks, new Toasts(), api);
+	const asked: ScopeQuestion[] = [];
+	const answers: (ApplyTo | null)[] = [];
+	const prompt = {
+		ask: vi.fn(async (question: ScopeQuestion) => {
+			asked.push(question);
+			return answers.shift() ?? null;
+		})
+	};
+	return { store, prompt, answers, scopes: new ScopedTasks(prompt, store) };
+}
+
+const recurring = () => task('series', { recurrence: RULE });
+
+beforeEach(() => {
+	api = fakePort();
+});
+
+describe('what the store sends for the scope', () => {
+	it('adds a Subtask with the answer, so "This occurrence" does not reach future ones', async () => {
+		const { scopes, answers } = setup(recurring());
+		answers.push('occurrence');
+		await scopes.add('list', 'Fern', 'series');
+
+		expect(api.createTask).toHaveBeenCalledOnce();
+		expect(api.createTask.mock.calls[0][0]).toMatchObject({
+			title: 'Fern',
+			parentId: 'series',
+			applyTo: 'occurrence'
+		});
+	});
+
+	it('adds a Task that does not recur without an applyTo', async () => {
+		const { scopes } = setup(task('plain'));
+		await scopes.add('list', 'Fern', 'plain');
+
+		expect(api.createTask.mock.calls[0][0]).not.toHaveProperty('applyTo');
+	});
+
+	it('updates and deletes with the answer', async () => {
+		const { scopes, answers } = setup(recurring());
+		answers.push('occurrence', 'future');
+		await scopes.update('series', { title: 'x' }, { discard: vi.fn() });
+		await scopes.remove('series');
+		await vi.waitFor(() => expect(api.deleteTask).toHaveBeenCalled());
+
+		expect(api.updateTask.mock.calls[0][2]).toBe('occurrence');
+		expect(api.deleteTask.mock.calls[0][1]).toMatchObject({ applyTo: 'future' });
+	});
+});
+
+describe('exemptions, through the real store', () => {
+	it('completing a recurring Task is not asked about and is sent once', async () => {
+		const { store, prompt } = setup(recurring());
+		await store.complete('series');
+
+		expect(prompt.ask).not.toHaveBeenCalled();
+		expect(api.completeTask).toHaveBeenCalledOnce();
+		expect(api.completeTask.mock.calls[0]).toHaveLength(2); // id and time zone only
+	});
+
+	it('reopening a recurring Task is not asked about and is sent once', async () => {
+		const { store, prompt } = setup({ ...recurring(), completedAt: '2027-03-10T00:00:00.000Z' });
+		await store.reopen('series');
+
+		expect(prompt.ask).not.toHaveBeenCalled();
+		expect(api.reopenTask).toHaveBeenCalledOnce();
+		expect(api.reopenTask.mock.calls[0]).toEqual(['series']);
+	});
+
+	it('moving a recurring Task is not asked about and is sent once', async () => {
+		const { store, prompt } = setup(recurring(), task('other', { position: 'a1' }));
+		await store.move('series', { listId: 'list', parentId: null, after: 'other' });
+
+		expect(prompt.ask).not.toHaveBeenCalled();
+		expect(api.moveTask).toHaveBeenCalledOnce();
+		expect(api.moveTask.mock.calls[0][1]).not.toHaveProperty('applyTo');
+	});
+
+	it('moving a Subtask of a recurring Task is not asked about either', async () => {
+		const { store, prompt } = setup(recurring(), task('sub', { parentId: 'series' }));
+		await store.move('sub', { listId: 'list', parentId: null });
+
+		expect(prompt.ask).not.toHaveBeenCalled();
+		expect(api.moveTask).toHaveBeenCalledOnce();
+	});
+});

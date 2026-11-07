@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { startClock, viewer, viewerTimeZone } from '#lib/client/clock.svelte.js';
-	import type { ApplyTo } from '#lib/client/occurrence-scope.svelte.js';
-	import { getTaskStore } from '#lib/client/tasks.svelte.js';
+	import type { ScopedTasks } from '#lib/client/occurrence-scope.svelte.js';
 	import {
 		parseDueDate,
 		parsePlannedDate,
@@ -18,19 +17,17 @@
 	 * Planned falls after Due. Rendered after mount only: the inputs show times in the browser's
 	 * zone, which the server doesn't know.
 	 *
-	 * `chooseScope` asks which Occurrences of a recurring Task a change applies to (`undefined`: it
-	 * doesn't recur; `null`: cancelled, and the fields show the saved dates again).
+	 * `scopes` (the panel's) asks which Occurrences of a recurring Task a change applies to; if
+	 * cancelled, the fields show the saved dates again. Typed dates are saved on blur only while a
+	 * change would still ask first.
 	 */
 	type Props = {
 		task: SerializedTask;
-		chooseScope?: () => Promise<ApplyTo | null | undefined>;
-		/** Whether a change would ask first; typed dates are then saved on blur only. */
-		asksFirst?: boolean;
+		scopes: ScopedTasks;
 	};
 
-	let { task, chooseScope, asksFirst = false }: Props = $props();
+	let { task, scopes }: Props = $props();
 
-	const store = getTaskStore();
 	// The panel is keyed by Task id; a pending date can still be saved while it's closing.
 	const taskId = untrack(() => task.id);
 	onMount(startClock);
@@ -40,10 +37,10 @@
 	/** Bumped when a change is cancelled, so the fields show the saved dates again. */
 	let revision = $state(0);
 
-	async function change(patch: { planned?: SerializedPlannedDate; due?: SerializedDueDate }) {
-		const applyTo = chooseScope ? await chooseScope() : undefined;
-		if (applyTo === null) revision++;
-		else void store.update(taskId, patch, applyTo);
+	const asksFirst = $derived(scopes.unanswered(taskId, 'dates'));
+
+	function change(patch: { planned?: SerializedPlannedDate; due?: SerializedDueDate }) {
+		return scopes.update(taskId, patch, { group: 'dates', discard: () => revision++ });
 	}
 
 	const plannedAfterDue = $derived(

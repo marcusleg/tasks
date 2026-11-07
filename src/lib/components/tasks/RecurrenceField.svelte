@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { Temporal } from 'temporal-polyfill';
+	import { ScopedTasks } from '#lib/client/occurrence-scope.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import {
 		localDate,
@@ -89,7 +90,7 @@
 
 	function save(next: SerializedRecurrence | null) {
 		if (JSON.stringify(next) !== JSON.stringify(rule)) {
-			void store.update(taskId, { recurrence: next });
+			void ScopedTasks.setRecurrence(store, taskId, next);
 		}
 	}
 

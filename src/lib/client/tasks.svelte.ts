@@ -33,9 +33,9 @@ import {
 } from '#lib/domain/subtasks.js';
 import { moveChanges, moveError, stepMove, type Step, type TaskMove } from '#lib/domain/moves.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
-import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
 import type { TaskPatch, TaskPort } from './task-port.js';
 import { browserTimeZone } from './clock.svelte.js';
+import type { Scope } from './occurrence-scope.svelte.js';
 import type { Toasts } from './toasts.svelte.js';
 
 type ById = Record<string, SerializedTask>;
@@ -173,9 +173,9 @@ export class TaskStore {
 
 	/**
 	 * Adds a Task at the top of a List, or a Subtask at the bottom of its parent's Subtasks.
-	 * Returns its id right away. `applyTo` is for a Subtask of a recurring Task (see `TaskPort`).
+	 * Returns its id right away. `scope` comes from `ScopedTasks`.
 	 */
-	add(listId: string, title: string, parentId: string | null = null, applyTo?: ApplyTo): string {
+	add(listId: string, title: string, parentId: string | null, scope: Scope): string {
 		const id = newId();
 		const now = timestamp();
 		const siblings = Object.values(this.#tasks).filter(
@@ -206,15 +206,21 @@ export class TaskStore {
 			}
 		};
 		void this.#send('add the task', () =>
-			this.#port.createTask({ id, listId, title, parentId, ...(applyTo && { applyTo }) })
+			this.#port.createTask({
+				id,
+				listId,
+				title,
+				parentId,
+				...(scope.applyTo && { applyTo: scope.applyTo })
+			})
 		);
 		return id;
 	}
 
-	/** `applyTo`: which Occurrences of a recurring Task (or its Subtasks) the change reaches. */
-	update(id: string, patch: TaskPatch, applyTo?: ApplyTo): Promise<boolean> {
+	/** `scope` (from `ScopedTasks`): which Occurrences of a recurring Task the change reaches. */
+	update(id: string, patch: TaskPatch, scope: Scope): Promise<boolean> {
 		this.#patchLocal(id, patch);
-		return this.#send('save the task', () => this.#port.updateTask(id, patch, applyTo));
+		return this.#send('save the task', () => this.#port.updateTask(id, patch, scope.applyTo));
 	}
 
 	/**
@@ -244,11 +250,11 @@ export class TaskStore {
 
 	/**
 	 * Deletes a Task and its Subtasks. Undo restores them as the server deleted them (same ids,
-	 * positions, dates, completion and everything else). `applyTo` "occurrence" skips a recurring
+	 * positions, dates, completion and everything else). `scope` "occurrence" skips a recurring
 	 * Task's current Occurrence: the next one comes with the server's answer, and Undo puts the
 	 * skipped one back in its place.
 	 */
-	remove(id: string, applyTo?: ApplyTo): Promise<boolean> {
+	remove(id: string, scope: Scope): Promise<boolean> {
 		const local = [this.#tasks[id], ...this.all.filter((task) => task.parentId === id)].filter(
 			(task) => task !== undefined
 		);
@@ -256,7 +262,10 @@ export class TaskStore {
 		let removed: SerializedTask[] | undefined;
 		let next: string | null = null;
 		const done = this.#send('delete the task', async () => {
-			const answer = await this.#port.deleteTask(id, { applyTo, timeZone: browserTimeZone() });
+			const answer = await this.#port.deleteTask(id, {
+				applyTo: scope.applyTo,
+				timeZone: browserTimeZone()
+			});
 			removed = answer.removed;
 			next = answer.next;
 			return answer;
