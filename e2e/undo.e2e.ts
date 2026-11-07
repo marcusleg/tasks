@@ -131,16 +131,15 @@ test('delete a Task with Subtasks, then Undo: all of them come back with their d
 	await column(page, LIST).getByRole('button', { name: 'Party', exact: true }).click();
 	const deletion = page.waitForResponse((r) => r.request().method() === 'DELETE');
 	await detailPanel(page).getByRole('button', { name: 'Delete task' }).click();
-	const removed = ((await (await deletion).json()) as { removed: SerializedTask[] }).removed;
-	expect(removed.map((task) => task.title)).toEqual(['Party', 'Cake', 'Candles', 'Balloons']);
+	const deleted = ((await (await deletion).json()) as TaskChanges).deleted;
+	expect(deleted).toHaveLength(4);
 	await expect(toast(page)).toContainText('Task deleted');
 	await expect(openTitles(page, LIST)).toHaveText(['Bread', 'Milk']);
 
-	const restore = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/tasks/restore');
+	const undo = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/undo');
 	await undoButton(page).click();
-	const restored = (await (await restore).json()) as TaskChanges;
-	const byId = (tasks: SerializedTask[]) => [...tasks].sort((a, b) => a.id.localeCompare(b.id));
-	expect(byId(restored.upserted)).toEqual(byId(removed));
+	const restored = (await (await undo).json()) as TaskChanges;
+	expect(restored.upserted.map((task) => task.id).sort()).toEqual([...deleted].sort());
 
 	await expect(openTitles(page, LIST)).toHaveText(['Bread', 'Party', 'Milk']);
 	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Cake', 'Candles']);
@@ -345,7 +344,7 @@ test('the toast goes away on its own, but not while hovered', async ({ page }) =
 	await expect(toast(page)).toHaveCount(0);
 });
 
-test('a failed restore is reported, e.g. when the List was deleted meanwhile', async ({ page }) => {
+test('a failed Undo is reported, e.g. when the List was deleted meanwhile', async ({ page }) => {
 	await createList(page, 'Errands');
 	const stamps = await addTaskAndGet(page, 'Stamps');
 	await column(page, 'Errands').getByRole('button', { name: 'Stamps', exact: true }).click();
@@ -357,7 +356,7 @@ test('a failed restore is reported, e.g. when the List was deleted meanwhile', a
 	expect(gone.status()).toBe(204);
 
 	await undoButton(page).click();
-	await expect(notifications(page)).toContainText("Couldn't restore the task. List not found.");
+	await expect(notifications(page)).toContainText('That action can’t be undone any more');
 });
 
 test('a failed request toasts and the screen catches up', async ({ page }) => {

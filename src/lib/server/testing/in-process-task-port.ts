@@ -18,7 +18,6 @@ import {
 import { POST as completeTask } from '../../../routes/api/tasks/[id]/complete/+server.js';
 import { POST as moveTask } from '../../../routes/api/tasks/[id]/move/+server.js';
 import { POST as reopenTask } from '../../../routes/api/tasks/[id]/reopen/+server.js';
-import { POST as restoreTasks } from '../../../routes/api/tasks/restore/+server.js';
 import { POST as undo } from '../../../routes/api/undo/+server.js';
 import { DELETE as deleteCompletedTasks } from '../../../routes/api/lists/[id]/completed-tasks/+server.js';
 
@@ -57,17 +56,6 @@ export function inProcessTaskPort(
 			return call(deleteTask as Handler, 'DELETE', `/api/tasks/${id}${search}`, { id });
 		},
 		undo: (undoId) => call(undo as Handler, 'POST', '/api/undo', {}, { undoId }),
-		restoreTasks: (tasks, replaces) =>
-			call(
-				restoreTasks as Handler,
-				'POST',
-				'/api/tasks/restore',
-				{},
-				{
-					tasks,
-					...(replaces && { replaces })
-				}
-			),
 		moveTask: (id, move) =>
 			call(moveTask as Handler, 'POST', `/api/tasks/${id}/move`, { id }, move),
 		deleteCompletedTasks: (listId) =>
