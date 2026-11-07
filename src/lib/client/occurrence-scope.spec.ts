@@ -3,6 +3,7 @@ import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
 import type { SerializedTask } from '#lib/domain/tasks.js';
 import {
 	ScopedTasks,
+	ScopePrompt,
 	seriesTarget,
 	type ApplyTo,
 	type Scope,
@@ -138,14 +139,24 @@ describe('ScopedTasks.update', () => {
 		expect(discard).not.toHaveBeenCalled();
 	});
 
-	it('evaluates a patch function after the answer, and sends nothing when it returns null', async () => {
-		const prompt = fakePrompt('future');
+	it('evaluates a patch function only after the answer, and sends nothing when it is null', async () => {
+		const events: string[] = [];
+		const prompt = {
+			ask: async () => {
+				events.push('asked');
+				await Promise.resolve();
+				events.push('answered');
+				return 'future' as const;
+			}
+		};
 		const { store, sent } = fakeStore(recurring);
-		const patch = vi.fn(() => null);
+		const patch = vi.fn(() => {
+			events.push('patch');
+			return null;
+		});
 		await new ScopedTasks(prompt, store).update('series', patch, { discard: vi.fn() });
 
-		expect(prompt.ask).toHaveBeenCalledOnce();
-		expect(patch).toHaveBeenCalledOnce();
+		expect(events).toEqual(['asked', 'answered', 'patch']);
 		expect(sent).toEqual([]);
 	});
 
@@ -248,25 +259,22 @@ describe('ScopedTasks in a panel (remembers)', () => {
 		expect(scopes.unanswered('plain', 'details')).toBe(true);
 	});
 
-	it('queues questions, answering one at a time', async () => {
-		const resolvers: ((choice: ApplyTo | null) => void)[] = [];
-		const asked: string[] = [];
-		const prompt = {
-			ask: (question: ScopeQuestion) => {
-				asked.push(question.remembersFor ?? '');
-				return new Promise<ApplyTo | null>((resolve) => resolvers.push(resolve));
-			}
-		};
+	it('shows queued questions one at a time (ScopePrompt)', async () => {
+		const prompt = new ScopePrompt();
 		const { store, sent } = fakeStore(recurring);
 		const scopes = new ScopedTasks(prompt, store);
 		const options = { discard: vi.fn() };
 
 		const first = scopes.update('series', { title: 'a' }, options);
 		const second = scopes.update('series', { title: 'b' }, options);
-		expect(resolvers).toHaveLength(2);
-		resolvers[0]('occurrence');
-		resolvers[1]('future');
-		await Promise.all([first, second]);
+		await vi.waitFor(() => expect(prompt.question).not.toBeNull());
+		prompt.answer('occurrence');
+		await first;
+		// The second question comes up only now that the first is answered.
+		await vi.waitFor(() => expect(prompt.question).not.toBeNull());
+		expect(sent).toHaveLength(1);
+		prompt.answer('future');
+		await second;
 
 		expect(sent.map((s) => s.applyTo)).toEqual(['occurrence', 'future']);
 	});
@@ -366,7 +374,7 @@ describe('exemptions', () => {
 	it('changing the Recurrence is never asked about', async () => {
 		const prompt = fakePrompt();
 		const { store, sent } = fakeStore(recurring);
-		await new ScopedTasks(prompt, store).setRecurrence('series', null);
+		await ScopedTasks.setRecurrence(store, 'series', null);
 
 		expect(prompt.ask).not.toHaveBeenCalled();
 		expect(sent).toEqual([{ call: 'update', id: 'series', applyTo: undefined }]);

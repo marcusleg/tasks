@@ -148,14 +148,14 @@ export class ScopedTasks {
 	}
 
 	/** The recurring Task a change to `id` concerns, if any. */
-	target(id: string): SeriesTarget | null {
+	#target(id: string): SeriesTarget | null {
 		const task = this.#store.get(id);
 		return seriesTarget(task, this.#store.get(task?.parentId));
 	}
 
 	/** Whether a change to `id` in `group` would have to be asked about first. */
 	unanswered(id: string, group: ScopeGroup): boolean {
-		const target = this.target(id);
+		const target = this.#target(id);
 		return target !== null && this.chosen[this.#key(group, target)] === undefined;
 	}
 
@@ -166,7 +166,7 @@ export class ScopedTasks {
 
 	/**
 	 * Updates a Task's title, description, dates or priority (its Recurrence goes through
-	 * {@link setRecurrence}). `patch` may be a function, called once the scope is known, returning
+	 * {@link ScopedTasks.setRecurrence}). `patch` may be a function, called once the scope is known, returning
 	 * what to send (or `null` for nothing). Cancelled: nothing is sent and `discard` is called.
 	 */
 	async update(
@@ -174,7 +174,7 @@ export class ScopedTasks {
 		patch: TaskPatch | (() => TaskPatch | null),
 		options: UpdateOptions
 	): Promise<void> {
-		const scope = await this.#decide(options.group ?? 'details', this.target(id));
+		const scope = await this.#decide(options.group ?? 'details', this.#target(id));
 		if (!scope) return options.discard();
 		const resolved = typeof patch === 'function' ? patch() : patch;
 		if (resolved) void this.#store.update(id, resolved, scope);
@@ -196,7 +196,7 @@ export class ScopedTasks {
 	 * whether it was deleted.
 	 */
 	async remove(id: string, onConfirmed?: () => void): Promise<boolean> {
-		const target = this.target(id);
+		const target = this.#target(id);
 		let applyTo: ApplyTo | null | undefined;
 		if (target) {
 			applyTo = await this.#prompt.ask({
@@ -212,8 +212,12 @@ export class ScopedTasks {
 	}
 
 	/** Changes the Recurrence itself: never asked about, always this and all future Occurrences. */
-	setRecurrence(id: string, recurrence: TaskPatch['recurrence']): Promise<boolean> {
-		return this.#store.update(id, { recurrence }, decide());
+	static setRecurrence(
+		store: ScopedStore,
+		id: string,
+		recurrence: TaskPatch['recurrence']
+	): Promise<boolean> {
+		return store.update(id, { recurrence }, decide());
 	}
 
 	#key(group: ScopeGroup, target: SeriesTarget): ScopeGroup {

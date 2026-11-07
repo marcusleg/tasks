@@ -137,6 +137,50 @@ test('cancelling the question discards the change', async ({ page }) => {
 	await expect(openTitles(page, LIST)).toHaveText(['Water plants']);
 });
 
+test('cancelling the question puts the date back', async ({ page }) => {
+	await weeklyTask(page);
+	await openTask(page, 'Water plants');
+
+	await plannedDateInput(page).fill('2027-03-12');
+	await plannedDateInput(page).blur();
+	await editPrompt(page).getByRole('button', { name: 'Cancel' }).click();
+
+	await expect(plannedDateInput(page)).toHaveValue('2027-03-10');
+	await closePanel(page);
+	await expect(openRow(page, 'Water plants')).toContainText('10 Mar 2027');
+});
+
+test('cancelling the question puts the Priority back', async ({ page }) => {
+	await weeklyTask(page);
+	await openTask(page, 'Water plants');
+
+	await detailPanel(page).getByRole('radio', { name: 'High', exact: true }).check();
+	await editPrompt(page).getByRole('button', { name: 'Cancel' }).click();
+
+	await expect(
+		detailPanel(page).getByRole('radio', { name: 'High', exact: true })
+	).not.toBeChecked();
+	await closePanel(page);
+	await expect(
+		openRow(page, 'Water plants').getByRole('button', { name: 'Priority: None' })
+	).toBeVisible();
+});
+
+test('cancelling the question keeps the subtask title for another try, and adds nothing', async ({
+	page
+}) => {
+	await weeklyTask(page);
+	await openTask(page, 'Water plants');
+
+	const add = detailPanel(page).getByRole('textbox', { name: 'Add subtask' });
+	await add.fill('Fern');
+	await add.press('Enter');
+	await editPrompt(page).getByRole('button', { name: 'Cancel' }).click();
+
+	await expect(add).toHaveValue('Fern');
+	await expect(detailPanel(page).getByRole('checkbox', { name: 'Fern' })).toHaveCount(0);
+});
+
 test('deleting This Occurrence skips to the next one', async ({ page }) => {
 	await weeklyTask(page);
 	await openTask(page, 'Water plants');
