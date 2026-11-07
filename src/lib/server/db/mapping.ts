@@ -120,7 +120,7 @@ export function toTask(row: TaskRow): Task {
 
 /**
  * The columns for a Task's own fields (everything but ids, timestamps and ownership), e.g. to
- * insert a copy of a Task or restore one for Undo.
+ * insert a copy of a Task.
  */
 export function taskColumns(
 	task: Omit<Task, 'id' | 'listId' | 'createdAt' | 'updatedAt'>

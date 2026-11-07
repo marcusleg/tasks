@@ -45,11 +45,11 @@ The state of a Task that has been checked off. Completing a Task completes all o
 _Avoid_: Done, finished, archived
 
 **Reopen**:
-Undoing a Task's Completed state. Reopening a Subtask whose parent is Completed reopens the parent too (a Completed Task never has open Subtasks), but not its other Subtasks. If the Occurrence being reopened is the one that created the current Occurrence, and that current Occurrence hasn't been changed by the User, the reopened Occurrence takes its place again. In every other case it comes back as a one-off Task with no Recurrence.
+Undoing a Task's Completed state. Reopen is not Undo and follows its own rules. Reopening a Subtask whose parent is Completed reopens the parent too (a Completed Task never has open Subtasks), but not its other Subtasks. If the Occurrence being reopened is the one that created the current Occurrence, and that current Occurrence hasn't been changed by the User, the reopened Occurrence takes its place again. In every other case it comes back as a one-off Task with no Recurrence.
 _Avoid_: Uncomplete, uncheck, restore
 
 **Undo**:
-Putting back the exact state before the User's latest action, once, from the toast that action showed. It covers everything the action did, including to the parent and to future Occurrences. If putting that back would overwrite or lose a later change, Undo does nothing and says so: that means a later change to what the action changed, to the parent, or, if the action changed the parent's fields or Subtask template, to any of the parent's Subtasks. Other later changes stay, such as a new Subtask next to a deleted one that comes back, and they still count as changes for Reopen. Unlike Reopen, it follows no rules of its own about what comes back.
+Putting back the exact state before the User's latest action, once, from the toast that action showed. It covers everything the action did, including to the parent and to future Occurrences. If putting that back would overwrite or lose a later change, Undo does nothing and says so: that means a later change to what the action changed, to the parent, or, if the action changed the parent's fields or Subtask template, to any of the parent's Subtasks. Other later changes stay, such as a new Subtask next to a deleted one that comes back, and they still count as changes for Reopen. Unlike Reopen, it follows no rules of its own about what comes back: the "Task completed" toast's Undo brings back the Occurrence and Subtasks exactly as they were (a final Occurrence keeps its Recurrence, a completed Subtask leaves its parent unmarked), whereas Reopen from the Completed section can bring back a one-off Task.
 _Avoid_: Revert, rollback, restore
 
 ### Recurrence
@@ -59,7 +59,7 @@ A rule that makes a Task repeat every N days, weeks (on chosen weekdays), months
 _Avoid_: Repeat, schedule, series
 
 **Occurrence**:
-One instance of a recurring Task. Only the current Occurrence exists in a List; later ones are projected from the Recurrence. When an Occurrence is completed it stays Completed, and the next Occurrence appears as a new open Task, with its Subtasks reopened and their dates shifted. You can edit or delete just the current Occurrence (deleting it skips to the next), or the current Occurrence and all future ones. Changes to its Subtasks work the same way; completing a Subtask is progress on the current Occurrence, not a change.
+One instance of a recurring Task. Only the current Occurrence exists in a List; later ones are projected from the Recurrence. When an Occurrence is completed it stays Completed, and the next Occurrence appears as a new open Task, with its Subtasks reopened and their dates shifted. You can edit or delete just the current Occurrence (deleting it skips to the next), or the current Occurrence and all future ones. Changes to its Subtasks work the same way; completing a Subtask is progress on the current Occurrence, not a change to the series: it never asks which Occurrences it reaches. It does count as a change for Reopen, though, as it marks the Occurrence as worked on; Undo of that completion leaves the Occurrence unmarked again.
 _Avoid_: Instance, copy, repetition
 
 ### Ordering and views

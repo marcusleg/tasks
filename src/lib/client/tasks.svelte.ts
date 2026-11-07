@@ -6,10 +6,8 @@
  * never overwrites newer keystrokes.
  *
  * Completing, deleting and moving a Task to another List offer Undo in a toast (#14), which puts
- * back the previous state through the server. Deleting a Task (a Subtask, or skipping an Occurrence
- * included) and moving to another List use the server's Undo (ADR 0004). The others have yet to
- * move to it: Reopen (which also restores the Subtasks the completion closed, and removes the next
- * Occurrence it created).
+ * back the previous state through the server (ADR 0004). Reopen is not an Undo: it has rules of its
+ * own (CONTEXT.md → Reopen) and is what the Completed section uses.
  *
  * Created by a page from its `load` data and shared with the components below it through
  * context ({@link setTaskStore} / {@link getTaskStore}). The page calls {@link TaskStore.dispose}
@@ -215,15 +213,34 @@ export class TaskStore {
 	/**
 	 * Completes a Task and, with it, its open Subtasks (the cascade in `#lib/domain/subtasks`).
 	 * The next Occurrence of a recurring Task is created by the server and shows up with its answer.
-	 * Undo reopens it, which the server turns back into exactly the state before.
+	 * Undo shows the Tasks as they were at once and is then the server's: it puts back exactly the state before, including the parent of a Subtask
+	 * and the Recurrence of a final Occurrence. It is queued behind the complete request, so that
+	 * request's answer (with `undo`) is in by then; if completing changed nothing there is no Undo,
+	 * and a failure is reported like any other and reloads the page data.
 	 */
 	complete(id: string): Promise<boolean> {
 		const changes = completionChanges(Object.values(this.#tasks), id, timestamp());
+		const previous = changes.map(({ id }) => this.#tasks[id]).filter((task) => task !== undefined);
 		this.#applyCompletion(changes);
-		const done = this.#send('complete the task', () =>
-			this.#port.completeTask(id, browserTimeZone())
-		);
-		if (changes.length > 0) this.#offerUndo('Task completed', done, () => void this.reopen(id));
+		let undoId: string | null = null;
+		// The Tasks the completion created (the next Occurrence), which Undo takes away again.
+		let created: string[] = [];
+		const done = this.#send('complete the task', async () => {
+			const answer = await this.#port.completeTask(id, browserTimeZone());
+			undoId = answer.undo;
+			created = answer.upserted.map((task) => task.id).filter((taskId) => !this.#tasks[taskId]);
+			return answer;
+		});
+		if (changes.length > 0) {
+			this.#offerUndo('Task completed', done, () => {
+				// At once, like the check-off; Undo's answer then sets the exact fields.
+				this.apply({ upserted: previous, deleted: created });
+				void this.#send('undo', () => {
+					if (!undoId) throw new Error('The task wasn’t completed');
+					return this.#port.undo(undoId);
+				});
+			});
+		}
 		return done;
 	}
 

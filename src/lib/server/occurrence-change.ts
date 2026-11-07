@@ -5,8 +5,9 @@
  *
  * - **The changed state.** A changed Occurrence no longer gives way to the one before it when that
  *   one is reopened. Field edits and moves mark the Task itself, and any change to a Subtask marks
- *   its parent. Completing or reopening a Task itself doesn't count, so Undo of a completion still
- *   restores the previous Occurrence.
+ *   its parent. Completing or reopening a Task itself doesn't count, and neither does a completed
+ *   Subtask's parent being marked once Undo has put the completion back (Undo restores the
+ *   parent's changed state exactly).
  * - **The Subtask template of an open recurring parent**, which the next Occurrence's Subtasks come
  *   from once it exists. "This Occurrence" first keeps the Subtasks as they are in it, so future
  *   Occurrences get those rather than the changed ones. "This and all future" also changes the
