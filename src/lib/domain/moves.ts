@@ -20,21 +20,6 @@ export interface TaskMove {
 	after?: string;
 }
 
-const MAX_POSITION_LENGTH = 200;
-
-/** Whether `key` is a valid Custom Order key (a `fractional-indexing` key). */
-export function isPositionKey(key: unknown): key is string {
-	if (typeof key !== 'string' || key.length > MAX_POSITION_LENGTH) return false;
-	// The library's base-62 digits; it doesn't check every character itself.
-	if (!/^[0-9A-Za-z]+$/.test(key)) return false;
-	try {
-		generateKeyBetween(key, null);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 /** The fields the move rules read. */
 export interface Movable {
 	id: string;

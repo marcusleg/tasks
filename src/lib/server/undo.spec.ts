@@ -743,6 +743,19 @@ describe('a Subtask moved out, and a later change to a sibling', () => {
 		expect(() => undoLatest(changed.scope, refused)).toThrow(UndoConflictError);
 	});
 
+	it('an unchanged generated parent: Undo applies, but refuses once a sibling changed (the move made it keep a template)', () => {
+		const family = generated(setUp());
+		const undoId = moveFernOut(family);
+		expect(undoLatest(family.scope, undoId)).toBeDefined();
+
+		const changed = generated(setUp());
+		const other = add(changed.scope, changed.listId, 'Reed', changed.parent.id);
+		const refused = moveFernOut(changed);
+		reorderReed(changed, other);
+
+		expect(() => undoLatest(changed.scope, refused)).toThrow(UndoConflictError);
+	});
+
 	it('a recurring parent the move made keep a template: Undo refuses', () => {
 		const family = setUp();
 		const reed = add(family.scope, family.listId, 'Reed', family.parent.id);
@@ -847,10 +860,14 @@ describe('a Subtask moved into a new parent, and a later change to a sibling', (
 		const dog = add(family.scope, family.listId, 'Dog', parent.id);
 		return { parent, dog };
 	};
-	const moveMossIn = (family: Family, parentId: string) =>
-		undoable(family.scope, () =>
-			moveTask(family.scope, family.moss.id, { listId: family.listId, parentId })
+	/** Moves a Task from another List in as a Subtask: the endpoint records only moves between Lists. */
+	const moveMossIn = (family: Family, parentId: string) => {
+		const work = createList(family.scope, { name: 'Work' }).id;
+		const visitor = add(family.scope, work, 'Mop');
+		return undoable(family.scope, () =>
+			moveTask(family.scope, visitor.id, { listId: family.listId, parentId })
 		)!.undoId!;
+	};
 
 	it('a plain parent: Undo applies, whatever happened to the sibling', () => {
 		const family = setUp(false);
@@ -862,7 +879,7 @@ describe('a Subtask moved into a new parent, and a later change to a sibling', (
 
 		expect(undoLatest(family.scope, undoId)).toBeDefined();
 
-		expect(getTask(family.scope, family.moss.id)?.parentId).toBeNull();
+		expect(getListTasks(family.scope, family.listId).map((t) => t.title)).not.toContain('Mop');
 	});
 
 	it('a recurring parent the move made keep a template: a changed sibling refuses', () => {
