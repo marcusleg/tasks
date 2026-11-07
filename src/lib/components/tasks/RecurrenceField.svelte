@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { Temporal } from 'temporal-polyfill';
+	import { getScopePrompt, ScopedTasks } from '#lib/client/occurrence-scope.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import {
 		localDate,
@@ -27,6 +28,8 @@
 	let { task }: { task: SerializedTask } = $props();
 
 	const store = getTaskStore();
+	// Changing the Recurrence itself is never asked about.
+	const scopes = new ScopedTasks(getScopePrompt(), store);
 	const id = $props.id();
 	// The panel is keyed by Task id; a change can still be saved while it's closing.
 	const taskId = untrack(() => task.id);
@@ -89,7 +92,7 @@
 
 	function save(next: SerializedRecurrence | null) {
 		if (JSON.stringify(next) !== JSON.stringify(rule)) {
-			void store.update(taskId, { recurrence: next });
+			void scopes.setRecurrence(taskId, next);
 		}
 	}
 

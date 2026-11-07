@@ -2,11 +2,9 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import {
-		askDeleteScope,
-		EditScopes,
 		getScopePrompt,
 		SCOPE_GROUP_LABELS,
-		seriesTarget,
+		ScopedTasks,
 		type ScopeGroup
 	} from '#lib/client/occurrence-scope.svelte.js';
 	import { openTask } from '#lib/client/task-panel.js';
@@ -30,7 +28,7 @@
 	 * (with "Add subtask"); a Subtask links back to its parent.
 	 *
 	 * For a recurring Task, or a Subtask of one, a committed change asks whether it applies to this
-	 * Occurrence or to this and all future ones (`EditScopes`: once per field group while the panel
+	 * Occurrence or to this and all future ones (`ScopedTasks`: once per field group while the panel
 	 * is open; typing is saved only once that is known). Deleting always asks.
 	 */
 	type Props = {
@@ -56,12 +54,9 @@
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 	let saved = untrack(() => ({ title: task.title, description: task.description }));
 
-	const prompt = getScopePrompt();
-	// Read from the store, not the props: a change can still be asked about while the panel closes.
-	const scopes = new EditScopes(prompt, () => {
-		const current = store.get(taskId);
-		return seriesTarget(current, store.get(current?.parentId));
-	});
+	// Reads the Task from the store, not the props: a change can still be asked about while the
+	// panel closes.
+	const scopes = new ScopedTasks(getScopePrompt(), store, { remembers: true });
 	let asking = false;
 	let deleted = false;
 	/** Bumped when a change is cancelled, so the field shows the saved value again. */
@@ -104,22 +99,29 @@
 		clearTimeout(saveTimer);
 		saveTimer = undefined;
 		if (asking || deleted || !pendingPatch()) return;
-		if (!committed && scopes.unanswered('details')) return;
+		if (!committed && scopes.unanswered(taskId, 'details')) return;
 		asking = true;
-		const applyTo = await scopes.choose('details');
+		await scopes.update(
+			taskId,
+			() => {
+				// Re-read once the scope is known: typing may have gone on while the question was open.
+				const patch = pendingPatch();
+				if (patch) {
+					saved = {
+						title: patch.title ?? saved.title,
+						description: patch.description ?? saved.description
+					};
+				}
+				return patch;
+			},
+			{
+				discard: () => {
+					title = saved.title;
+					description = saved.description;
+				}
+			}
+		);
 		asking = false;
-		if (applyTo === null) {
-			title = saved.title;
-			description = saved.description;
-			return;
-		}
-		const patch = pendingPatch();
-		if (!patch) return;
-		saved = {
-			title: patch.title ?? saved.title,
-			description: patch.description ?? saved.description
-		};
-		void store.update(taskId, patch, applyTo);
 	}
 
 	function scheduleSave() {
@@ -127,13 +129,9 @@
 		saveTimer = setTimeout(() => save(false), SAVE_DELAY_MS);
 	}
 
-	async function changePriority(priority: SerializedTask['priority']) {
-		const applyTo = await scopes.choose('details');
-		if (applyTo === null) revision++;
-		else void store.update(taskId, { priority }, applyTo);
+	function changePriority(priority: SerializedTask['priority']) {
+		return scopes.update(taskId, { priority }, { discard: () => revision++ });
 	}
-
-	const chooseScope = (group: ScopeGroup) => () => scopes.choose(group);
 
 	/** What the panel remembers, e.g. "Date changes apply to this occurrence only." */
 	const scopeNote = $derived(
@@ -188,12 +186,10 @@
 
 	async function remove() {
 		clearTimeout(saveTimer);
-		const target = scopes.target;
-		const applyTo = target ? await askDeleteScope(prompt, target) : undefined;
-		if (applyTo === null) return;
-		deleted = true;
-		onClose();
-		void store.remove(taskId, applyTo);
+		await scopes.remove(taskId, () => {
+			deleted = true;
+			onClose();
+		});
 	}
 
 	// "Move to List" (#11): to the top of the other List, with its Subtasks; a Subtask becomes a
@@ -308,11 +304,7 @@
 		</div>
 
 		{#key revision}
-			<TaskDateFields
-				{task}
-				chooseScope={chooseScope('dates')}
-				asksFirst={scopes.unanswered('dates')}
-			/>
+			<TaskDateFields {task} {scopes} />
 			<PriorityField value={task.priority} onchange={changePriority} />
 		{/key}
 
@@ -336,12 +328,7 @@
 				{#if completed}
 					<p class="hint">Reopen the task to add subtasks.</p>
 				{:else}
-					<AddTaskRow
-						listId={task.listId}
-						parentId={task.id}
-						label="Add subtask"
-						chooseScope={chooseScope('subtasks')}
-					/>
+					<AddTaskRow listId={task.listId} parentId={task.id} label="Add subtask" {scopes} />
 				{/if}
 			</section>
 		{/if}

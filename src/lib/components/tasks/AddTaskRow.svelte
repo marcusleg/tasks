@@ -1,26 +1,26 @@
 <script lang="ts">
 	import { navigating } from '$app/state';
 	import { hydration } from '#lib/client/hydration.svelte.js';
-	import type { ApplyTo } from '#lib/client/occurrence-scope.svelte.js';
+	import { getScopePrompt, ScopedTasks } from '#lib/client/occurrence-scope.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import { MAX_TITLE_LENGTH } from '#lib/domain/tasks.js';
 
 	/**
 	 * "Add a task": Enter adds the Task at the top of the List and keeps the field ready for the
-	 * next one. With `parentId` it adds Subtasks instead, at the bottom of the parent's Subtasks.
-	 * `chooseScope` asks whether a Subtask of a recurring Task is added to this Occurrence only or to
-	 * all future ones (`undefined`: no need to ask; `null`: cancelled, the title stays).
+	 * next one. With `parentId` it adds Subtasks instead, at the bottom of the parent's Subtasks;
+	 * for a recurring parent `ScopedTasks` asks first (if cancelled, the title stays). Pass the
+	 * detail panel's `scopes` so its remembered answers apply.
 	 */
 	type Props = {
 		listId: string;
 		parentId?: string | null;
 		label?: string;
-		chooseScope?: () => Promise<ApplyTo | null | undefined>;
+		scopes?: ScopedTasks;
 	};
 
-	let { listId, parentId = null, label = 'Add a task', chooseScope }: Props = $props();
+	let { listId, parentId = null, label = 'Add a task', scopes: panelScopes }: Props = $props();
 
-	const store = getTaskStore();
+	const scopes = $derived(panelScopes ?? new ScopedTasks(getScopePrompt(), getTaskStore()));
 	const id = $props.id();
 	let title = $state('');
 	// Not usable before hydration (Enter would submit a native form and lose the Title), nor while
@@ -34,10 +34,8 @@
 		event.preventDefault();
 		const adding = title;
 		if (!adding.trim()) return;
-		const applyTo = chooseScope ? await chooseScope() : undefined;
-		if (applyTo === null) return;
-		store.add(listId, adding, parentId, applyTo);
-		if (title === adding) title = '';
+		const id = await scopes.add(listId, adding, parentId);
+		if (id !== null && title === adding) title = '';
 	}
 
 	function onkeydown(event: KeyboardEvent) {
