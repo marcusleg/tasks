@@ -235,6 +235,26 @@ describe('the action behind the record doesn’t matter', () => {
 		expect(changes.deleted).toHaveLength(3);
 	});
 
+	it('the last Occurrence of an ended series skipped: there is no next one, and Undo brings it back', () => {
+		const family = setUp();
+		const { scope, listId, parent } = family;
+		updateTask(scope, parent.id, {
+			recurrence: parseRecurrence({
+				frequency: 'weekly',
+				interval: 1,
+				end: { kind: 'count', count: 1 },
+				anchor: 'schedule'
+			})
+		});
+
+		const changes = expectUndoRestoresLists(scope, [listId], () =>
+			deleteTask(scope, parent.id, 'occurrence')
+		);
+
+		expect(changes.deleted).toEqual([]);
+		expect(getTask(scope, parent.id)?.recurrence).not.toBeNull();
+	});
+
 	it('an Occurrence completed: the next one goes again, the Subtasks reopen', () => {
 		const family = setUp();
 		expectUndoRestoresLists(family.scope, [family.listId], () =>
