@@ -616,7 +616,7 @@ describe('TaskStore through the in-process adapter', () => {
 				const { store, toasts, port } = setup(list.id);
 				const before = serverTasks(list.id);
 
-				await store.remove(subtask.id, applyTo);
+				await store.remove(subtask.id, asked(applyTo));
 				toasts.act(toasts.actionable!.id);
 				await port.idle();
 
@@ -631,7 +631,7 @@ describe('TaskStore through the in-process adapter', () => {
 				const { task, subtask } = plantsWithTemplate(list.id);
 				const { store, toasts, port } = setup(list.id);
 
-				await store.remove(subtask.id, applyTo);
+				await store.remove(subtask.id, asked(applyTo));
 				updateTask(scope(), task.id, { title: 'Water ferns' });
 				const moved = serverTasks(list.id);
 				toasts.act(toasts.actionable!.id);

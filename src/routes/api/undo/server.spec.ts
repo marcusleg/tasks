@@ -4,7 +4,7 @@ import { dateOnly } from '#lib/domain/dates.js';
 import { parseRecurrence } from '#lib/domain/recurrence.js';
 import type { TaskChanges } from '#lib/domain/tasks.js';
 import type { Db } from '#lib/server/db/client.js';
-import type { User } from '#lib/server/db/schema.js';
+import { undoRecords, type User } from '#lib/server/db/schema.js';
 import { createList } from '#lib/server/lists.js';
 import { createTask, getListTasks, getTask, updateTask } from '#lib/server/tasks.js';
 import { createTestDb, insertUser } from '#lib/server/testing/index.js';
@@ -120,6 +120,15 @@ describe('POST /api/undo', () => {
 		expect(await status(() => undo(alice, undoId))).toBe(409);
 
 		expect(getListTasks(scope(alice), listId)).toEqual(before);
+	});
+
+	it('answers 409 for a record that can’t be read, and writes nothing', async () => {
+		const { fern, undoId } = await deleteFern(alice);
+		db.update(undoRecords).set({ before: 'not json' }).run();
+
+		expect(await status(() => undo(alice, undoId))).toBe(409);
+
+		expect(getTask(scope(alice), fern.id)).toBeUndefined();
 	});
 
 	it('answers 409 when a deleted Task’s id has been taken by another User', async () => {

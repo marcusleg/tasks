@@ -7,19 +7,41 @@
  * families to record (a family is a top-level Task and its Subtasks): all of their Tasks as they
  * were and as the action left them, in the User's one record.
  *
- * {@link undoLatest} puts them back. **The state has moved on**, and Undo overwrites nothing, unless
- * - the record's families are exactly as the action left them, apart from `updatedAt`: the same
- *   Tasks with the same values, so no later change to a Task, its parent or a sibling is lost, and
- * - every Task to put back still has its List.
- * Changes elsewhere, including to other Tasks of the List, don't get in the way.
+ * {@link undoLatest} puts back what differs. **The state has moved on**, and Undo overwrites nothing,
+ * if, apart from `updatedAt`:
+ * - a Task Undo would write or delete isn't as the action left it, or one it would put back has
+ *   returned by id,
+ * - the top-level Task of a family the action touched isn't as the action left it: a Subtask can't
+ *   come back to a parent that has been completed or deleted, or whose Subtask template has changed,
+ * - the action changed that top-level Task, and any Task of the family isn't as the action left it,
+ *   or a new Subtask has joined it. Undo then writes the parent's changed state and template, or
+ *   deletes the parent, which would lose what those later changes meant for the series.
+ * - a List to put a Task back into is gone.
+ * Otherwise later changes don't get in the way: other Tasks of the List, and siblings of a Subtask
+ * whose parent the action didn't change. A Task whose key a sibling took in the meantime goes right
+ * before that sibling.
  */
-import { and, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { restoredPosition } from '#lib/domain/moves.js';
+import { byCustomOrder, serializeTask } from '#lib/domain/tasks.js';
 import { toTask } from './db/mapping.js';
-import { lists, tasks, undoRecords, type TaskImage, type TaskRow } from './db/schema.js';
+import { lists, tasks, undoRecords, type TaskRow } from './db/schema.js';
 import { ownedBy, type UserScope } from './scope.js';
 import type { TaskChangeSet } from './tasks.js';
 
-/** The state has moved on (see above): a 409, and nothing was written. */
+/** A whole `tasks` row as JSON, its timestamps as ISO strings. */
+type TaskImage = Omit<TaskRow, 'completedAt' | 'createdAt' | 'updatedAt'> & {
+	completedAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+};
+
+interface Families {
+	before: TaskImage[];
+	after: TaskImage[];
+}
+
+/** The state has moved on (see above), or the record is unusable: a 409, and nothing was written. */
 export class UndoConflictError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -33,7 +55,8 @@ export class UndoConflictError extends Error {
  * `undoId`, for {@link undoLatest}; that is `null` if the action changed nothing, which leaves the
  * record as it was.
  *
- * It reads all of the User's Tasks twice, so wrap only what the User can undo.
+ * Wrap only actions that offer Undo: any other would replace the record of the action whose toast
+ * is still showing, and turn that Undo into a 404.
  */
 export function undoable<T extends object>(
 	scope: UserScope,
@@ -46,7 +69,11 @@ export function undoable<T extends object>(
 		const families = touchedFamilies(before, tasksOfUser(scope));
 		if (!families) return { ...result, undoId: null };
 
-		const record = { id: crypto.randomUUID(), ...families };
+		const record = {
+			id: crypto.randomUUID(),
+			before: JSON.stringify(families.before),
+			after: JSON.stringify(families.after)
+		};
 		scope.db
 			.insert(undoRecords)
 			.values({ userId: scope.userId, ...record })
@@ -58,9 +85,9 @@ export function undoable<T extends object>(
 
 /**
  * Undoes the action `undoId` names, if it is still the User's latest and hasn't been undone: the
- * record is used up. Returns what that wrote and deleted (with each Task's `updatedAt` as it was),
- * or `undefined` if there is no such record, which is also what another User's `undoId` gets.
- * Throws {@link UndoConflictError} if the state has moved on, leaving the record in place.
+ * record is used up. Returns what that wrote and deleted, or `undefined` if there is no such record,
+ * which is also what another User's `undoId` gets. Throws {@link UndoConflictError} if the state has
+ * moved on or the record can't be read, leaving the record in place.
  */
 export function undoLatest(scope: UserScope, undoId: string): TaskChangeSet | undefined {
 	return scope.db.transaction(() => {
@@ -70,11 +97,12 @@ export function undoLatest(scope: UserScope, undoId: string): TaskChangeSet | un
 			.where(and(ownedBy(undoRecords.userId, scope), eq(undoRecords.id, undoId)))
 			.get();
 		if (!record) return undefined;
-		assertNotMovedOn(scope, record);
+		const families = { before: readImages(record.before), after: readImages(record.after) };
+		assertNotMovedOn(scope, families);
 
-		const after = byId(record.after);
-		const wasThere = byId(record.before);
-		const created = record.after.filter((task) => !wasThere.has(task.id)).map((task) => task.id);
+		const after = byId(families.after);
+		const wasThere = byId(families.before);
+		const created = families.after.filter((task) => !wasThere.has(task.id)).map((task) => task.id);
 		scope.db
 			.delete(tasks)
 			.where(owned(scope, inArray(tasks.id, created)))
@@ -82,7 +110,7 @@ export function undoLatest(scope: UserScope, undoId: string): TaskChangeSet | un
 
 		// Restored Tasks can refer to each other in any order. Resets itself when the transaction ends.
 		scope.db.run(sql`PRAGMA defer_foreign_keys = ON`);
-		const changed = record.before.filter((task) => !sameValues(task, after.get(task.id)));
+		const changed = families.before.filter((task) => !sameValues(task, after.get(task.id)));
 		const sources = existingIds(scope, changed);
 		const upserted = changed.map((image) => {
 			const row = fromImage(image);
@@ -91,12 +119,29 @@ export function undoLatest(scope: UserScope, undoId: string): TaskChangeSet | un
 			if (source !== null && !wasThere.has(source) && !sources.has(source)) {
 				row.generatedFromTaskId = null;
 			}
+			row.position = restoredPosition(siblingsOf(scope, row), row.position);
 			return toTask(writeRow(scope, row, after.has(row.id)));
 		});
 
 		scope.db.delete(undoRecords).where(ownedBy(undoRecords.userId, scope)).run();
 		return { upserted, deleted: created };
 	});
+}
+
+/**
+ * Call when a List is deleted. A record that mentions it can't be undone any more, and its copies of
+ * the List's Tasks shouldn't outlive the List. List ids are random, so looking through the text
+ * finds exactly those records, even one that can't be read.
+ */
+export function forgetList(scope: UserScope, listId: string): void {
+	const record = scope.db
+		.select()
+		.from(undoRecords)
+		.where(ownedBy(undoRecords.userId, scope))
+		.get();
+	if (record && (record.before.includes(listId) || record.after.includes(listId))) {
+		scope.db.delete(undoRecords).where(ownedBy(undoRecords.userId, scope)).run();
+	}
 }
 
 function owned(scope: UserScope, ...conditions: SQL[]): SQL {
@@ -119,6 +164,25 @@ function fromImage(image: TaskImage): TaskRow {
 		createdAt: new Date(image.createdAt),
 		updatedAt: new Date(image.updatedAt)
 	};
+}
+
+const TASK_COLUMNS = Object.keys(getTableColumns(tasks)).sort().join();
+
+/**
+ * The images in a record's JSON. A record that can't be read, or was written before `tasks` got its
+ * current columns, is refused: put back as it is, it would silently lose those fields.
+ */
+function readImages(json: string): TaskImage[] {
+	try {
+		const images: TaskImage[] = JSON.parse(json);
+		for (const image of images) {
+			if (Object.keys(image).sort().join() !== TASK_COLUMNS) throw new Error('Other columns');
+			serializeTask(toTask(fromImage(image)));
+		}
+		return images;
+	} catch {
+		throw new UndoConflictError('That action can’t be undone any more');
+	}
 }
 
 function byId(images: TaskImage[]): Map<string, TaskImage> {
@@ -145,7 +209,7 @@ function sameValues(a: TaskImage | undefined, b: TaskImage | undefined): boolean
 function touchedFamilies(
 	before: Map<string, TaskImage>,
 	after: Map<string, TaskImage>
-): { before: TaskImage[]; after: TaskImage[] } | null {
+): Families | null {
 	const touched = new Set<string>();
 	for (const id of new Set([...before.keys(), ...after.keys()])) {
 		const images = [before.get(id), after.get(id)];
@@ -158,8 +222,9 @@ function touchedFamilies(
 	return { before: ofFamilies(before), after: ofFamilies(after) };
 }
 
-function assertNotMovedOn(scope: UserScope, record: { before: TaskImage[]; after: TaskImage[] }) {
-	const listIds = [...new Set(record.before.map((task) => task.listId))];
+/** Throws unless the state is still one Undo can apply to; the rule is at the top of this file. */
+function assertNotMovedOn(scope: UserScope, { before, after }: Families) {
+	const listIds = [...new Set(before.map((task) => task.listId))];
 	const existingLists = scope.db
 		.select({ id: lists.id })
 		.from(lists)
@@ -167,8 +232,19 @@ function assertNotMovedOn(scope: UserScope, record: { before: TaskImage[]; after
 		.all();
 	if (existingLists.length < listIds.length) throw new UndoConflictError('The List is gone');
 
-	// By id as well, so that a Task the action deleted is noticed if it has come back.
-	const images = [...record.before, ...record.after];
+	const was = byId(before);
+	const left = byId(after);
+	const undone = [...new Set([...was.keys(), ...left.keys()])].filter(
+		(id) => !sameValues(was.get(id), left.get(id))
+	);
+	const topLevel = new Set(
+		undone.flatMap((id) => [was.get(id), left.get(id)].flatMap((t) => (t ? familyOf(t) : [])))
+	);
+	const rewritten = new Set(undone.filter((id) => topLevel.has(id)));
+
+	const expected = after.filter(
+		(task) => undone.includes(task.id) || topLevel.has(task.id) || rewritten.has(familyOf(task))
+	);
 	const current = scope.db
 		.select()
 		.from(tasks)
@@ -176,17 +252,17 @@ function assertNotMovedOn(scope: UserScope, record: { before: TaskImage[]; after
 			owned(
 				scope,
 				or(
-					inArray(tasks.id, [...new Set(images.map((task) => task.id))]),
-					inArray(tasks.parentId, [...new Set(images.map(familyOf))])
+					inArray(tasks.id, [...undone, ...topLevel, ...expected.map((task) => task.id)]),
+					inArray(tasks.parentId, [...rewritten])
 				) as SQL
 			)
 		)
 		.all()
 		.map(toImage);
-	const expected = byId(record.after);
+	const expectedById = byId(expected);
 	const asLeft =
-		current.length === expected.size &&
-		current.every((task) => sameValues(task, expected.get(task.id)));
+		current.length === expectedById.size &&
+		current.every((task) => sameValues(task, expectedById.get(task.id)));
 	if (!asLeft) throw new UndoConflictError('The Task or its Subtasks changed in the meantime');
 }
 
@@ -199,6 +275,23 @@ function existingIds(scope: UserScope, images: TaskImage[]): Set<string> {
 		.where(owned(scope, inArray(tasks.id, sources)))
 		.all();
 	return new Set(rows.map((row) => row.id));
+}
+
+/** The other Tasks where `row` goes, as they are now, in Custom Order. */
+function siblingsOf(scope: UserScope, row: TaskRow) {
+	return scope.db
+		.select({ id: tasks.id, position: tasks.position })
+		.from(tasks)
+		.where(
+			owned(
+				scope,
+				eq(tasks.listId, row.listId),
+				row.parentId === null ? isNull(tasks.parentId) : eq(tasks.parentId, row.parentId),
+				ne(tasks.id, row.id)
+			)
+		)
+		.all()
+		.sort(byCustomOrder);
 }
 
 /**

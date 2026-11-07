@@ -4,6 +4,7 @@ import type { SerializedTask, TaskChanges } from '../src/lib/domain/tasks';
 import { loginAs } from './auth';
 import { appOrigin } from './env';
 import {
+	addSubtask,
 	addTask,
 	column,
 	createList,
@@ -236,6 +237,35 @@ for (const scope of ['This occurrence', 'This and all future']) {
 		await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Fern', 'Cactus']);
 	});
 }
+
+test('Undo of deleting a Subtask keeps a Subtask added while the toast was showing', async ({
+	page
+}) => {
+	await addTask(page, 'Party');
+	const party = column(page, LIST).getByRole('button', { name: 'Party', exact: true });
+	await party.click();
+	await addSubtask(page, 'Cake');
+	await addSubtask(page, 'Candles');
+	await page.keyboard.press('Escape');
+	await expect(detailPanel(page)).toBeHidden();
+
+	await column(page, LIST).getByRole('button', { name: 'Cake', exact: true }).click();
+	await saved(page, () => detailPanel(page).getByRole('button', { name: 'Delete task' }).click());
+	await expect(toast(page)).toContainText('Task deleted');
+	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Candles']);
+
+	await party.click();
+	await addSubtask(page, 'Balloons');
+	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Candles', 'Balloons']);
+
+	const undone = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/undo');
+	await undoButton(page).click();
+	expect((await undone).ok()).toBe(true);
+
+	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Cake', 'Candles', 'Balloons']);
+	await page.reload();
+	await expect(subtaskTitles(page, LIST, 'Party')).toHaveText(['Cake', 'Candles', 'Balloons']);
+});
 
 test('Undo of deleting a Subtask overwrites nothing if the state has moved on', async ({
 	page

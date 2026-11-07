@@ -49,7 +49,7 @@ Undoing a Task's Completed state. Reopening a Subtask whose parent is Completed 
 _Avoid_: Uncomplete, uncheck, restore
 
 **Undo**:
-Putting back the exact state before the User's latest action, once, from the toast that action showed. It covers everything the action did, including to the parent and to future Occurrences. If that Task, its parent or its Subtasks have changed since, Undo does nothing and says so. Unlike Reopen, it follows no rules of its own about what comes back.
+Putting back the exact state before the User's latest action, once, from the toast that action showed. It covers everything the action did, including to the parent and to future Occurrences. If putting that back would overwrite or lose a later change, Undo does nothing and says so: that means a later change to what the action changed, or to the parent, or to any of the parent's Subtasks if the action changed the parent too. Other later changes stay, such as a new Subtask next to a deleted one that comes back. Unlike Reopen, it follows no rules of its own about what comes back.
 _Avoid_: Revert, rollback, restore
 
 ### Recurrence

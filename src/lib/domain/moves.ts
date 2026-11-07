@@ -147,14 +147,23 @@ function bounds(siblings: readonly Movable[], move: TaskMove): [Bound, Bound] {
 		: [siblings[index], siblings[index + 1]];
 }
 
-/** `key` if no sibling holds it, else a key right before the sibling that does. */
-function restoredPosition(siblings: readonly Movable[], key: string): string {
+/**
+ * `key` if no sibling holds it, else a key right before the sibling that does. `siblings` are the
+ * Task's, without itself, in Custom Order.
+ */
+export function restoredPosition(
+	siblings: readonly Pick<Movable, 'position'>[],
+	key: string
+): string {
 	const taken = siblings.findIndex((t) => t.position === key);
 	if (taken === -1) return key;
 	return keyBetween(siblings[taken - 1], siblings[taken]);
 }
 
-function keyBetween(lower: Bound, upper: Bound): string {
+function keyBetween(
+	lower: Pick<Movable, 'position'> | undefined,
+	upper: Pick<Movable, 'position'> | undefined
+): string {
 	try {
 		return generateKeyBetween(lower?.position ?? null, upper?.position ?? null);
 	} catch {

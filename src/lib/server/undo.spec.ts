@@ -9,7 +9,7 @@ import { parseRecurrence } from '#lib/domain/recurrence.js';
 import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
 import { InvalidInputError } from '#lib/domain/validation.js';
 import type { Task } from '#lib/domain/tasks.js';
-import { tasks, undoRecords, users } from './db/schema';
+import { lists, tasks, undoRecords, users } from './db/schema';
 import { createList, deleteList } from './lists';
 import type { UserScope } from './scope';
 import {
@@ -244,8 +244,9 @@ describe('the record', () => {
 
 		const records = db.select().from(undoRecords).all();
 		expect(records).toHaveLength(1);
-		expect(records[0].before.map((task) => task.id)).toEqual([parent.id]);
-		expect(records[0].after).toEqual([]);
+		const before: { id: string }[] = JSON.parse(records[0].before);
+		expect(before.map((task) => task.id)).toEqual([parent.id]);
+		expect(JSON.parse(records[0].after)).toEqual([]);
 	});
 
 	it('is used up by Undo, so a second Undo finds nothing', () => {
@@ -303,6 +304,27 @@ describe('only the User’s latest action can be undone', () => {
 	});
 });
 
+/** Later changes to a sibling of "Fern", given a third Subtask "Reed". */
+const LATER_TO_A_SIBLING: { what: string; after: (family: Family, reed: Task) => unknown }[] = [
+	{
+		what: 'was edited',
+		after: ({ scope, cactus }) => updateTask(scope, cactus.id, { title: 'Cacti' }, 'occurrence')
+	},
+	{
+		what: 'was completed',
+		after: ({ scope, cactus }) => completeTask(scope, cactus.id)
+	},
+	{
+		what: 'was deleted',
+		after: ({ scope, cactus }) => deleteTask(scope, cactus.id, 'occurrence')
+	},
+	{
+		what: 'was reordered',
+		after: ({ scope, listId, parent, cactus }, reed) =>
+			moveTask(scope, reed.id, { listId, parentId: parent.id, before: cactus.id })
+	}
+];
+
 describe('when the state has moved on, Undo throws and overwrites nothing', () => {
 	const MOVED_ON: { what: string; after: (family: Family) => unknown }[] = [
 		{
@@ -326,22 +348,6 @@ describe('when the state has moved on, Undo throws and overwrites nothing', () =
 				})
 		},
 		{
-			what: 'a sibling was edited',
-			after: ({ scope, cactus }) => updateTask(scope, cactus.id, { title: 'Cacti' })
-		},
-		{
-			what: 'a sibling was completed',
-			after: ({ scope, cactus }) => completeTask(scope, cactus.id)
-		},
-		{
-			what: 'a sibling was deleted',
-			after: ({ scope, cactus }) => deleteTask(scope, cactus.id)
-		},
-		{
-			what: 'a Subtask was added',
-			after: ({ scope, listId, parent }) => add(scope, listId, 'Reed', parent.id)
-		},
-		{
 			what: 'a Task was moved in under the parent',
 			after: ({ scope, listId, parent, moss }) =>
 				moveTask(scope, moss.id, { listId, parentId: parent.id })
@@ -359,14 +365,54 @@ describe('when the state has moved on, Undo throws and overwrites nothing', () =
 		expect(family.db.select().from(tasks).all()).toEqual(before);
 	});
 
-	it('the List was deleted', () => {
+	// The action changed the parent, so Undo would write it (its template, here) back.
+	describe('a sibling, once the action has changed the parent', () => {
+		it.each(LATER_TO_A_SIBLING)('$what', ({ after }) => {
+			const family = setUp();
+			const reed = add(family.scope, family.listId, 'Reed', family.parent.id);
+			const undoId = deleteFernUndoably(family, 'occurrence');
+			after(family, reed);
+			const before = family.db.select().from(tasks).all();
+
+			expect(() => undoLatest(family.scope, undoId)).toThrow(UndoConflictError);
+
+			expect(family.db.select().from(tasks).all()).toEqual(before);
+		});
+
+		it('was added with "This Occurrence", which would otherwise reach future Occurrences', () => {
+			const family = setUp();
+			const { scope, listId, parent } = family;
+			const undoId = deleteFernUndoably(family, 'occurrence');
+			createTask(scope, { listId, title: 'Reed', parentId: parent.id }, 'occurrence');
+
+			expect(() => undoLatest(scope, undoId)).toThrow(UndoConflictError);
+		});
+	});
+
+	it('a Subtask joined a next Occurrence Undo would delete', () => {
 		const family = setUp();
+		const skipped = undoable(family.scope, () =>
+			deleteTask(family.scope, family.parent.id, 'occurrence')
+		)!;
+		const reed = add(family.scope, family.listId, 'Reed', skipped.nextOccurrenceId!);
+
+		expect(() => undoLatest(family.scope, skipped.undoId!)).toThrow(UndoConflictError);
+		expect(getTask(family.scope, reed.id)?.title).toBe('Reed');
+	});
+
+	it('a List to put a Task back into is gone, and it isn’t another User’s List of that id', () => {
+		const family = setUp();
+		const bob: UserScope = { db: family.db, userId: insertUser(family.db, 'bob').id };
 		const undoId = undoable(family.scope, () =>
 			deleteTask(family.scope, family.parent.id)
 		)!.undoId!;
-		deleteList(family.scope, family.listId);
+		// Not through `deleteList`, which would also drop the record: this is the check behind that.
+		family.db.delete(lists).where(eq(lists.id, family.listId)).run();
+		createList(bob, { id: family.listId, name: 'Bob’s' });
 
 		expect(() => undoLatest(family.scope, undoId)).toThrow(/List is gone/);
+
+		expect(getListTasks(bob, family.listId)).toEqual([]);
 	});
 
 	it('a Task the action deleted has come back', () => {
@@ -406,6 +452,57 @@ describe('when the state has moved on, Undo throws and overwrites nothing', () =
 });
 
 describe('what doesn’t count as moving on', () => {
+	it('a Subtask added next to a deleted one: a plain Task gets both', () => {
+		const db = createTestDb();
+		const scope: UserScope = { db, userId: insertUser(db, 'alice').id };
+		const listId = createList(scope, { name: 'Groceries' }).id;
+		const party = add(scope, listId, 'Party');
+		const cake = add(scope, listId, 'Cake', party.id);
+		add(scope, listId, 'Candles', party.id);
+		const undoId = undoable(scope, () => deleteTask(scope, cake.id))!.undoId!;
+		add(scope, listId, 'Balloons', party.id);
+
+		expect(undoLatest(scope, undoId)).toBeDefined();
+
+		const subtasks = getListTasks(scope, listId).filter((task) => task.parentId === party.id);
+		expect(subtasks.map((task) => task.title)).toEqual(['Cake', 'Candles', 'Balloons']);
+	});
+
+	// The action didn't change the parent ("Fern" is deleted from all future Occurrences, and it has
+	// no template), so Undo only puts "Fern" back and these changes stay.
+	describe('a sibling, when the action didn’t change the parent', () => {
+		it.each(LATER_TO_A_SIBLING)('$what', ({ after }) => {
+			const family = setUp(false);
+			const { scope, listId, parent, fern } = family;
+			const reed = add(scope, listId, 'Reed', parent.id);
+			const parentBefore = getTask(scope, parent.id);
+			const undoId = deleteFernUndoably(family);
+			expect(getTask(scope, parent.id)?.changedSinceGenerated).toBe(
+				parentBefore?.changedSinceGenerated
+			);
+			after(family, reed);
+			const later = wholeLists(scope, listId);
+
+			const changes = undoLatest(scope, undoId)!;
+
+			expect(changes.upserted.map((task) => task.id)).toEqual([fern.id]);
+			expect(getTask(scope, fern.id)?.title).toBe('Fern');
+			const fernId = fern.id;
+			expect(wholeLists(scope, listId).filter((task) => task.id !== fernId)).toEqual(later);
+		});
+
+		it('of a recurring Task without a template, added for all future Occurrences', () => {
+			const family = setUp();
+			const { scope, listId, parent } = family;
+			const undoId = deleteFernUndoably(family);
+			add(scope, listId, 'Reed', parent.id);
+
+			expect(undoLatest(scope, undoId)).toBeDefined();
+
+			expect(nextSubtasks(family)).toEqual(['Fern', 'Cactus', 'Reed']);
+		});
+	});
+
 	it('changes to other Tasks of the List', () => {
 		const family = setUp();
 		const undoId = deleteFernUndoably(family);
@@ -438,5 +535,219 @@ describe('what doesn’t count as moving on', () => {
 		undoLatest(family.scope, undoId);
 
 		expect(getTask(family.scope, next.id)?.generatedFromTaskId).toBeNull();
+	});
+
+	it('another User taking that Occurrence’s id: the link is cleared all the same', () => {
+		const family = setUp();
+		const bob: UserScope = { db: family.db, userId: insertUser(family.db, 'bob').id };
+		const previous = family.parent;
+		const next = generated(family).parent;
+		const undoId = undoable(family.scope, () => deleteTask(family.scope, next.id))!.undoId!;
+		deleteCompletedTasks(family.scope, family.listId);
+		const bobsList = createList(bob, { name: 'Bob' }).id;
+		createTask(bob, { id: previous.id, listId: bobsList, title: 'Bob’s' });
+
+		undoLatest(family.scope, undoId);
+
+		expect(getTask(family.scope, next.id)?.generatedFromTaskId).toBeNull();
+	});
+});
+
+describe('a Task whose Custom Order key was taken in the meantime', () => {
+	/** A Task between the two that came to hold one key, to see that the two can be told apart. */
+	function expectAMoveBetween(scope: UserScope, listId: string, parentId: string | null) {
+		const siblings = getListTasks(scope, listId).filter((task) => task.parentId === parentId);
+		expect(new Set(siblings.map((task) => task.position)).size).toBe(siblings.length);
+		const newcomer = add(scope, listId, 'Newcomer');
+		const after = siblings.at(-2)!;
+		moveTask(scope, newcomer.id, { listId, parentId, after: after.id });
+		const order = getListTasks(scope, listId)
+			.filter((task) => task.parentId === parentId)
+			.map((task) => task.id);
+		expect(order.indexOf(newcomer.id)).toBe(order.indexOf(after.id) + 1);
+	}
+
+	it('the last Subtask comes back right before the sibling that took its key', () => {
+		const family = setUp();
+		const { scope, listId, parent, cactus } = family;
+		const undoId = undoable(scope, () => deleteTask(scope, cactus.id))!.undoId!;
+		const reed = add(scope, listId, 'Reed', parent.id);
+		expect(reed.position).toBe(cactus.position);
+
+		const changes = undoLatest(scope, undoId)!;
+
+		const restored = changes.upserted.find((task) => task.id === cactus.id)!;
+		expect(restored.position).not.toBe(cactus.position);
+		const subtasks = getListTasks(scope, listId).filter((task) => task.parentId === parent.id);
+		expect(subtasks.map((task) => task.title)).toEqual(['Fern', 'Cactus', 'Reed']);
+		expectAMoveBetween(scope, listId, parent.id);
+	});
+
+	it('the top Task of a List comes back right before the Task that took its key', () => {
+		const db = createTestDb();
+		const scope: UserScope = { db, userId: insertUser(db, 'alice').id };
+		const listId = createList(scope, { name: 'Chores' }).id;
+		add(scope, listId, 'Milk');
+		const top = add(scope, listId, 'Bread');
+		const undoId = undoable(scope, () => deleteTask(scope, top.id))!.undoId!;
+		const eggs = add(scope, listId, 'Eggs');
+		expect(eggs.position).toBe(top.position);
+
+		undoLatest(scope, undoId);
+
+		const titles = getListTasks(scope, listId).map((task) => task.title);
+		expect(titles).toEqual(['Bread', 'Eggs', 'Milk']);
+		expectAMoveBetween(scope, listId, null);
+	});
+
+	it('a key nobody holds comes back as it was', () => {
+		const family = setUp();
+		const { scope, listId, parent, fern } = family;
+		const undoId = deleteFernUndoably(family);
+		add(scope, listId, 'Reed', parent.id);
+
+		const changes = undoLatest(scope, undoId)!;
+
+		expect(changes.upserted.find((task) => task.id === fern.id)?.position).toBe(fern.position);
+	});
+});
+
+describe('restored Tasks that refer to each other', () => {
+	it('come back in any order: the next Occurrence above the deleted one it came from', () => {
+		const family = setUp();
+		const { scope, listId } = family;
+		const previous = family.parent;
+		const next = generated(family).parent;
+		moveTask(scope, next.id, { listId, parentId: null, before: previous.id });
+		expect(getTask(scope, next.id)?.generatedFromTaskId).toBe(previous.id);
+
+		expectUndoRestoresLists(scope, [listId], () => deleteTask(scope, previous.id));
+
+		expect(getTask(scope, next.id)?.generatedFromTaskId).toBe(previous.id);
+	});
+});
+
+describe('a record that can’t be read', () => {
+	/** A top-level Task deleted with no effect elsewhere, so `after` is empty and nothing compares. */
+	function deletedTask() {
+		const db = createTestDb();
+		const scope: UserScope = { db, userId: insertUser(db, 'alice').id };
+		const listId = createList(scope, { name: 'Chores' }).id;
+		const task = createTask(scope, {
+			listId,
+			title: 'Water plants',
+			description: 'The ferns too',
+			priority: 'high'
+		})!.upserted[0];
+		const undoId = undoable(scope, () => deleteTask(scope, task.id))!.undoId!;
+		const before: Record<string, unknown>[] = JSON.parse(
+			db.select().from(undoRecords).get()!.before
+		);
+		expect(JSON.parse(db.select().from(undoRecords).get()!.after)).toEqual([]);
+		return { db, scope, listId, undoId, before };
+	}
+
+	it.each([
+		{
+			what: 'written when `tasks` had other columns',
+			edit: ([{ description, priority, ...image }]: Record<string, unknown>[]) =>
+				JSON.stringify([{ ...image, details: description, importance: priority }])
+		},
+		{
+			what: 'written before `tasks` got a column',
+			edit: ([image]: Record<string, unknown>[]) =>
+				JSON.stringify([{ ...image, priority: undefined }])
+		},
+		{
+			what: 'written after `tasks` lost a column',
+			edit: ([image]: Record<string, unknown>[]) => JSON.stringify([{ ...image, extra: 1 }])
+		},
+		{
+			what: 'with a corrupt date',
+			edit: ([image]: Record<string, unknown>[]) =>
+				JSON.stringify([{ ...image, createdAt: 'yesterday' }])
+		},
+		{
+			what: 'with a corrupt Recurrence',
+			edit: ([image]: Record<string, unknown>[]) =>
+				JSON.stringify([{ ...image, recurrence: { frequency: 'sometimes' } }])
+		},
+		{ what: 'that isn’t a list', edit: () => '{"not":"a list"}' },
+		{ what: 'that isn’t JSON', edit: () => 'not json' }
+	])('$what is refused, and nothing is written', ({ edit }) => {
+		const { db, scope, listId, undoId, before } = deletedTask();
+		db.update(undoRecords)
+			.set({ before: edit(before) })
+			.run();
+
+		expect(() => undoLatest(scope, undoId)).toThrow(UndoConflictError);
+
+		expect(getListTasks(scope, listId)).toEqual([]);
+	});
+
+	it('the next action replaces it', () => {
+		const { db, scope, listId, undoId } = deletedTask();
+		db.update(undoRecords).set({ before: 'not json' }).run();
+		const milk = add(scope, listId, 'Milk');
+
+		const done = undoable(scope, () => deleteTask(scope, milk.id))!;
+
+		expect(undoLatest(scope, undoId)).toBeUndefined();
+		expect(undoLatest(scope, done.undoId!)).toBeDefined();
+	});
+
+	it('a List’s deletion still drops it', () => {
+		const { db, scope, listId } = deletedTask();
+		db.update(undoRecords)
+			.set({ before: `not json ${listId}` })
+			.run();
+
+		deleteList(scope, listId);
+
+		expect(db.select().from(undoRecords).all()).toEqual([]);
+	});
+});
+
+describe('deleting a List', () => {
+	it('drops a record that touches it: nothing to undo, and no copies of its Tasks left', () => {
+		const family = setUp();
+		const undoId = deleteFernUndoably(family);
+
+		deleteList(family.scope, family.listId);
+
+		expect(family.db.select().from(undoRecords).all()).toEqual([]);
+		expect(undoLatest(family.scope, undoId)).toBeUndefined();
+	});
+
+	it('leaves a record of another List in place', () => {
+		const family = setUp();
+		const other = createList(family.scope, { name: 'Other' }).id;
+		const undoId = deleteFernUndoably(family);
+
+		deleteList(family.scope, other);
+
+		expect(undoLatest(family.scope, undoId)).toBeDefined();
+	});
+
+	it('drops a record that only touched it as where a Task went', () => {
+		const family = setUp();
+		const work = createList(family.scope, { name: 'Work' }).id;
+		undoable(family.scope, () =>
+			moveTask(family.scope, family.moss.id, { listId: work, parentId: null })
+		);
+
+		deleteList(family.scope, work);
+
+		expect(family.db.select().from(undoRecords).all()).toEqual([]);
+	});
+
+	it('another User’s deletion doesn’t touch the record', () => {
+		const family = setUp();
+		const bob: UserScope = { db: family.db, userId: insertUser(family.db, 'bob').id };
+		const undoId = deleteFernUndoably(family);
+
+		expect(deleteList(bob, family.listId)).toBe(false);
+
+		expect(undoLatest(family.scope, undoId)).toBeDefined();
 	});
 });

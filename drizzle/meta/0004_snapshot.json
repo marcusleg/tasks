@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "fc3b271b-f4e1-459c-a24c-2bedfbecb8d1",
+  "id": "72907a68-fde3-4ec2-a21d-7c611bf1121a",
   "prevId": "7d17ac23-bdc9-4290-b8b2-0a2975a40400",
   "tables": {
     "calendar_link_lists": {
@@ -666,14 +666,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
         }
       },
       "indexes": {},
