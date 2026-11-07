@@ -680,6 +680,22 @@ describe('TaskStore through the in-process adapter', () => {
 				expect(port.reloads).toBe(0);
 			});
 
+			it('the Task is open again right away, before Undo’s answer', async () => {
+				const list = createList(scope(), { name: 'Groceries' });
+				const { task } = plants(list.id);
+				const { store, toasts, port } = setup(list.id);
+
+				await store.complete(task.id);
+				expect(store.openTasks(list.id)).toHaveLength(1);
+				toasts.act(toasts.actionable!.id);
+
+				// Not awaited: the answer of /api/undo hasn't been applied yet.
+				expect(store.get(task.id)?.completedAt).toBeNull();
+				expect(store.openTasks(list.id).map((t) => t.id)).toEqual([task.id]);
+				await port.idle();
+				expectInSyncWithServer(store, list.id);
+			});
+
 			it('a Subtask: the parent isn’t marked as changed, so the previous Occurrence still gives way', async () => {
 				const list = createList(scope(), { name: 'Groceries' });
 				const { task } = plants(list.id);

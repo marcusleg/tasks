@@ -213,22 +213,28 @@ export class TaskStore {
 	/**
 	 * Completes a Task and, with it, its open Subtasks (the cascade in `#lib/domain/subtasks`).
 	 * The next Occurrence of a recurring Task is created by the server and shows up with its answer.
-	 * Undo is the server's: it puts back exactly the state before, including the parent of a Subtask
+	 * Undo shows the Tasks as they were at once and is then the server's: it puts back exactly the state before, including the parent of a Subtask
 	 * and the Recurrence of a final Occurrence. It is queued behind the complete request, so that
 	 * request's answer (with `undo`) is in by then; if completing changed nothing there is no Undo,
 	 * and a failure is reported like any other and reloads the page data.
 	 */
 	complete(id: string): Promise<boolean> {
 		const changes = completionChanges(Object.values(this.#tasks), id, timestamp());
+		const previous = changes.map(({ id }) => this.#tasks[id]).filter((task) => task !== undefined);
 		this.#applyCompletion(changes);
 		let undoId: string | null = null;
+		// The Tasks the completion created (the next Occurrence), which Undo takes away again.
+		let created: string[] = [];
 		const done = this.#send('complete the task', async () => {
 			const answer = await this.#port.completeTask(id, browserTimeZone());
 			undoId = answer.undo;
+			created = answer.upserted.map((task) => task.id).filter((taskId) => !this.#tasks[taskId]);
 			return answer;
 		});
 		if (changes.length > 0) {
 			this.#offerUndo('Task completed', done, () => {
+				// At once, like the check-off; Undo's answer then sets the exact fields.
+				this.apply({ upserted: previous, deleted: created });
 				void this.#send('undo', () => {
 					if (!undoId) throw new Error('The task wasn’t completed');
 					return this.#port.undo(undoId);
