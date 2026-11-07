@@ -131,3 +131,26 @@ test('the API rejects anonymous requests with 401', async ({ request }) => {
 
 	expect(response.status()).toBe(401);
 });
+
+test('a failed List change toasts and the name rolls back', async ({ page }) => {
+	await loginAs(page);
+	await createList(page, 'Groceries');
+	await expectFocused(page, 'Groceries');
+	await page.route('**/api/lists/*', (route) =>
+		route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"Boom"}' })
+	);
+
+	await listOption(page, 'Groceries', 'Rename list');
+	await page.getByRole('textbox', { name: 'List name' }).fill('Shopping');
+	await page.keyboard.press('Enter');
+
+	await expect(page.getByRole('status', { name: 'Notifications' })).toContainText(
+		"Couldn't save the list. Boom."
+	);
+	// The optimistic rename is rolled back by reloading the Lists.
+	await expect(page.getByRole('heading', { name: 'Groceries', level: 2 })).toBeVisible({
+		timeout: 3000
+	});
+	await expect(sidebar(page).getByRole('link', { name: 'Groceries' })).toBeVisible();
+	await expect(sidebar(page).getByRole('link', { name: 'Shopping' })).toBeHidden();
+});

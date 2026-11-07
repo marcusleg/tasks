@@ -1,7 +1,8 @@
 /**
  * The browser's copy of the User's Lists (sidebar, List headers), with optimistic mutations like
  * {@link TaskStore}: each change is applied locally at once, then sent through the shared
- * {@link OptimisticQueue}, one request at a time and in order. Created by the root layout from its `load` data and shared through context.
+ * {@link OptimisticQueue}, one request at a time and in order. Created by the root
+ * layout from its `load` data and shared through context.
  */
 import { getContext, setContext } from 'svelte';
 import { generateKeyBetween } from 'fractional-indexing';
