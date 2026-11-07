@@ -9,15 +9,19 @@ Undo used to be made of other operations: Reopen, a move back, and a restore of 
 **When the state has moved on.** Undo refuses with a 409, and the browser shows a toast and reloads with nothing written, if, apart from `updatedAt`:
 
 - a Task Undo would write or delete isn't as the action left it, or one it would put back has returned by id;
-- the top-level Task of a family the action touched isn't as the action left it, so a Subtask never comes back to a parent that has been completed, deleted or given another template;
-- the action changed that top-level Task, and any Task of the family isn't as the action left it, or a new Subtask has joined it;
+- the top-level Task of a family the action touched isn't as the action left it;
+- the action changed more of that top-level Task than marking it as changed, and any Task of the family isn't as the action left it, or a new Subtask has joined it;
 - a List to put a Task back into is gone.
 
 Anything else doesn't get in the way, and a later change that doesn't conflict stays. So after deleting Cake from a plain Task, adding the Subtask Balloons leaves Undo working, and the Subtasks end up Cake, Candles and Balloons. Refusing there would lose Cake for nothing, as Undo writes neither the parent nor Balloons.
 
-The third case is why families are recorded whole. If the action changed the parent, Undo writes the parent's changed state and template back, and that would lose what a later change to a sibling meant for the series. For example, deleting a Subtask with "This Occurrence" gives the parent a template; a sibling added with "This Occurrence" then writes nothing to the parent, but removing that template would pass the sibling on to future Occurrences. Likewise, a new Occurrence that Undo would delete takes its later Subtasks with it, so those refuse too.
+The second case is a deliberately simple rule. It keeps a Subtask from coming back to a parent that has been completed, deleted or given another template, and it also refuses unrelated edits to the parent, such as a rename, even where Undo wouldn't write the parent. Those are rare within the toast's lifetime, and a list of the fields that matter would be one more thing to keep right.
+
+The third case is why families are recorded whole. If the action changed the parent's fields or template, Undo writes the parent's changed state and template back, and that would lose what a later change to a sibling meant for the series. For example, deleting a Subtask with "This Occurrence" gives the parent a template; a sibling added with "This Occurrence" then writes nothing to the parent, but removing that template would pass the sibling on to future Occurrences. Likewise, a new Occurrence that Undo would delete takes its later Subtasks with it, so those refuse too.
 
 A sibling's `position` counts like its other fields there. Reordering a sibling also marks it as changed, and the same loss applies: without the template it kept, the next Occurrence would copy the new order.
+
+Marking the parent as changed doesn't count for the third case, or every Occurrence after the first would lose its Subtask until its first change. Delete Fern from an unchanged generated Occurrence and add Reed: Undo brings Fern back. It puts the parent's changed state back only if the family is otherwise as the action left it. After Reed the parent stays marked, as Reed is a real change: reopening the previous Occurrence gives a one-off Task, and the current Occurrence stays with its Subtasks. Without a later change, the current Occurrence gives way, as it would have before the action.
 
 **Whose action.** The action's answer carries a random `undo` id, and the record is looked up by that id and the signed-in User. Another User's id, an older action's, a used one and one whose record went with a deleted List all get the same 404. Without the id, a toast left open in one tab could undo an action taken in another.
 

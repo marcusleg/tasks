@@ -11,15 +11,20 @@
  * if, apart from `updatedAt`:
  * - a Task Undo would write or delete isn't as the action left it, or one it would put back has
  *   returned by id,
- * - the top-level Task of a family the action touched isn't as the action left it: a Subtask can't
- *   come back to a parent that has been completed or deleted, or whose Subtask template has changed,
- * - the action changed that top-level Task, and any Task of the family isn't as the action left it,
- *   or a new Subtask has joined it. Undo then writes the parent's changed state and template, or
- *   deletes the parent, which would lose what those later changes meant for the series.
+ * - the top-level Task of a family the action touched isn't as the action left it. This is
+ *   deliberately simple: it keeps a Subtask from a parent that has been completed or deleted or has
+ *   another template, and also refuses unrelated edits like a rename, which are rare within the
+ *   toast's lifetime,
+ * - the action changed more of that top-level Task than marking it as changed, and any Task of the
+ *   family isn't as the action left it, or a new Subtask has joined it. Undo then writes the parent's
+ *   template or fields, or deletes the parent, which would lose what those later changes meant for
+ *   the series.
  * - a List to put a Task back into is gone.
  * Otherwise later changes don't get in the way: other Tasks of the List, and siblings of a Subtask
- * whose parent the action didn't change. A Task whose key a sibling took in the meantime goes right
- * before that sibling.
+ * whose parent the action changed no more than that. If the action only marked the parent as changed,
+ * that goes back only if its family is otherwise as the action left it; after a later change there,
+ * it stays marked, as that is a change for Reopen too. A Task whose key a sibling took in the meantime
+ * goes right before that sibling.
  */
 import { and, eq, getTableColumns, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import { restoredPosition } from '#lib/domain/moves.js';
@@ -103,6 +108,11 @@ export function undoLatest(scope: UserScope, undoId: string): TaskChangeSet | un
 		const after = byId(families.after);
 		const wasThere = byId(families.before);
 		const created = families.after.filter((task) => !wasThere.has(task.id)).map((task) => task.id);
+		const changed = families.before.filter(
+			(task) =>
+				!sameValues(task, after.get(task.id)) &&
+				(!onlyMarkedChanged(task, after.get(task.id)) || familyAsLeft(scope, task.id, families))
+		);
 		scope.db
 			.delete(tasks)
 			.where(owned(scope, inArray(tasks.id, created)))
@@ -110,13 +120,12 @@ export function undoLatest(scope: UserScope, undoId: string): TaskChangeSet | un
 
 		// Restored Tasks can refer to each other in any order. Resets itself when the transaction ends.
 		scope.db.run(sql`PRAGMA defer_foreign_keys = ON`);
-		const changed = families.before.filter((task) => !sameValues(task, after.get(task.id)));
 		const sources = existingIds(scope, changed);
 		const upserted = changed.map((image) => {
 			const row = fromImage(image);
 			const source = row.generatedFromTaskId;
 			// If the Occurrence it came from is gone since, the foreign key would have cleared this too.
-			if (source !== null && !wasThere.has(source) && !sources.has(source)) {
+			if (source !== null && !changed.some((task) => task.id === source) && !sources.has(source)) {
 				row.generatedFromTaskId = null;
 			}
 			row.position = restoredPosition(siblingsOf(scope, row), row.position);
@@ -130,8 +139,10 @@ export function undoLatest(scope: UserScope, undoId: string): TaskChangeSet | un
 
 /**
  * Call when a List is deleted. A record that mentions it can't be undone any more, and its copies of
- * the List's Tasks shouldn't outlive the List. List ids are random, so looking through the text
- * finds exactly those records, even one that can't be read.
+ * the List's Tasks shouldn't outlive the List. List ids are random, so looking through the text finds
+ * those records, even one that can't be read. A Task's text holding the id drops a record it needn't,
+ * and a Task moved into the List since the action isn't mentioned: Undo then gets a clean 409, and
+ * that copy stays until the next undoable action. Both are harmless.
  */
 export function forgetList(scope: UserScope, listId: string): void {
 	const record = scope.db
@@ -175,6 +186,7 @@ const TASK_COLUMNS = Object.keys(getTableColumns(tasks)).sort().join();
 function readImages(json: string): TaskImage[] {
 	try {
 		const images: TaskImage[] = JSON.parse(json);
+		if (!Array.isArray(images)) throw new Error('Not a list');
 		for (const image of images) {
 			if (Object.keys(image).sort().join() !== TASK_COLUMNS) throw new Error('Other columns');
 			serializeTask(toTask(fromImage(image)));
@@ -240,11 +252,39 @@ function assertNotMovedOn(scope: UserScope, { before, after }: Families) {
 	const topLevel = new Set(
 		undone.flatMap((id) => [was.get(id), left.get(id)].flatMap((t) => (t ? familyOf(t) : [])))
 	);
-	const rewritten = new Set(undone.filter((id) => topLevel.has(id)));
+	const rewritten = new Set(
+		undone.filter((id) => topLevel.has(id) && !onlyMarkedChanged(was.get(id), left.get(id)))
+	);
 
 	const expected = after.filter(
 		(task) => undone.includes(task.id) || topLevel.has(task.id) || rewritten.has(familyOf(task))
 	);
+	if (!asLeft(scope, expected, [...undone, ...topLevel], [...rewritten])) {
+		throw new UndoConflictError('The Task or its Subtasks changed in the meantime');
+	}
+}
+
+/** Whether all the action did to a top-level Task was to mark it as changed. */
+function onlyMarkedChanged(was: TaskImage | undefined, left: TaskImage | undefined): boolean {
+	return was?.parentId === null && sameValues({ ...was, changedSinceGenerated: true }, left);
+}
+
+/** Whether the family of this top-level Task is as the action left it. */
+function familyAsLeft(scope: UserScope, id: string, { after }: Families): boolean {
+	const family = after.filter((task) => familyOf(task) === id);
+	return asLeft(scope, family, [id], [id]);
+}
+
+/**
+ * Whether the `expected` Tasks are as the action left them, and there are no others among `ids` or
+ * under `parents`.
+ */
+function asLeft(
+	scope: UserScope,
+	expected: TaskImage[],
+	ids: string[],
+	parents: string[]
+): boolean {
 	const current = scope.db
 		.select()
 		.from(tasks)
@@ -252,18 +292,18 @@ function assertNotMovedOn(scope: UserScope, { before, after }: Families) {
 			owned(
 				scope,
 				or(
-					inArray(tasks.id, [...undone, ...topLevel, ...expected.map((task) => task.id)]),
-					inArray(tasks.parentId, [...rewritten])
+					inArray(tasks.id, [...ids, ...expected.map((task) => task.id)]),
+					inArray(tasks.parentId, parents)
 				) as SQL
 			)
 		)
 		.all()
 		.map(toImage);
 	const expectedById = byId(expected);
-	const asLeft =
+	return (
 		current.length === expectedById.size &&
-		current.every((task) => sameValues(task, expectedById.get(task.id)));
-	if (!asLeft) throw new UndoConflictError('The Task or its Subtasks changed in the meantime');
+		current.every((task) => sameValues(task, expectedById.get(task.id)))
+	);
 }
 
 /** Which of the Occurrences these Tasks were generated from are still there. */
