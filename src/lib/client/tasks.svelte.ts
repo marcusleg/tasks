@@ -15,7 +15,6 @@
  * when it goes away, which withdraws its Undo.
  */
 import { getContext, setContext } from 'svelte';
-import { invalidate } from '$app/navigation';
 import {
 	byCustomOrder,
 	completedTasksOf,
@@ -34,9 +33,8 @@ import {
 } from '#lib/domain/subtasks.js';
 import { moveChanges, moveError, stepMove, type Step, type TaskMove } from '#lib/domain/moves.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
-import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
 import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
-import { api, type TaskPatch } from './api.js';
+import type { TaskPatch, TaskPort } from './task-port.js';
 import { browserTimeZone } from './clock.svelte.js';
 import type { Toasts } from './toasts.svelte.js';
 
@@ -49,6 +47,7 @@ function byId(tasks: SerializedTask[]): ById {
 export class TaskStore {
 	readonly #source: () => SerializedTask[];
 	readonly #toasts: Toasts;
+	readonly #port: TaskPort;
 	readonly #listName: (id: string) => string | undefined;
 	/** The toast offering Undo for this store's latest action, if any. */
 	#undoToast: number | undefined;
@@ -60,10 +59,12 @@ export class TaskStore {
 	constructor(
 		source: () => SerializedTask[],
 		toasts: Toasts,
+		port: TaskPort,
 		listName: (id: string) => string | undefined = () => undefined
 	) {
 		this.#source = source;
 		this.#toasts = toasts;
+		this.#port = port;
 		this.#listName = listName;
 	}
 
@@ -162,7 +163,7 @@ export class TaskStore {
 				return true;
 			} catch (cause) {
 				this.#toasts.failed(what, cause);
-				await invalidate(TASKS_DEPENDENCY);
+				await this.#port.reload();
 				return false;
 			}
 		});
@@ -172,7 +173,7 @@ export class TaskStore {
 
 	/**
 	 * Adds a Task at the top of a List, or a Subtask at the bottom of its parent's Subtasks.
-	 * Returns its id right away. `applyTo` is for a Subtask of a recurring Task (see `api`).
+	 * Returns its id right away. `applyTo` is for a Subtask of a recurring Task (see `TaskPort`).
 	 */
 	add(listId: string, title: string, parentId: string | null = null, applyTo?: ApplyTo): string {
 		const id = newId();
@@ -205,7 +206,7 @@ export class TaskStore {
 			}
 		};
 		void this.#send('add the task', () =>
-			api.createTask({ id, listId, title, parentId, ...(applyTo && { applyTo }) })
+			this.#port.createTask({ id, listId, title, parentId, ...(applyTo && { applyTo }) })
 		);
 		return id;
 	}
@@ -213,7 +214,7 @@ export class TaskStore {
 	/** `applyTo`: which Occurrences of a recurring Task (or its Subtasks) the change reaches. */
 	update(id: string, patch: TaskPatch, applyTo?: ApplyTo): Promise<boolean> {
 		this.#patchLocal(id, patch);
-		return this.#send('save the task', () => api.updateTask(id, patch, applyTo));
+		return this.#send('save the task', () => this.#port.updateTask(id, patch, applyTo));
 	}
 
 	/**
@@ -224,7 +225,9 @@ export class TaskStore {
 	complete(id: string): Promise<boolean> {
 		const changes = completionChanges(Object.values(this.#tasks), id, timestamp());
 		this.#applyCompletion(changes);
-		const done = this.#send('complete the task', () => api.completeTask(id, browserTimeZone()));
+		const done = this.#send('complete the task', () =>
+			this.#port.completeTask(id, browserTimeZone())
+		);
 		if (changes.length > 0) this.#offerUndo('Task completed', done, () => void this.reopen(id));
 		return done;
 	}
@@ -236,7 +239,7 @@ export class TaskStore {
 	 */
 	reopen(id: string): Promise<boolean> {
 		this.#applyCompletion(reopenChanges(Object.values(this.#tasks), id));
-		return this.#send('reopen the task', () => api.reopenTask(id));
+		return this.#send('reopen the task', () => this.#port.reopenTask(id));
 	}
 
 	/**
@@ -253,7 +256,7 @@ export class TaskStore {
 		let removed: SerializedTask[] | undefined;
 		let next: string | null = null;
 		const done = this.#send('delete the task', async () => {
-			const answer = await api.deleteTask(id, { applyTo, timeZone: browserTimeZone() });
+			const answer = await this.#port.deleteTask(id, { applyTo, timeZone: browserTimeZone() });
 			removed = answer.removed;
 			next = answer.next;
 			return answer;
@@ -264,7 +267,7 @@ export class TaskStore {
 			// restore's answer removes the next Occurrence it replaces.
 			void this.#send('restore the task', () => {
 				if (!removed) throw new Error('The task wasn’t deleted');
-				return api.restoreTasks(removed, next);
+				return this.#port.restoreTasks(removed, next);
 			});
 		});
 		return done;
@@ -316,7 +319,7 @@ export class TaskStore {
 		const next = { ...this.#tasks };
 		for (const { id: changed, ...patch } of changes) next[changed] = { ...next[changed], ...patch };
 		this.#tasks = next;
-		return this.#send('move the task', () => api.moveTask(id, move));
+		return this.#send('move the task', () => this.#port.moveTask(id, move));
 	}
 
 	/** "Delete all completed" for one List. */
@@ -327,7 +330,7 @@ export class TaskStore {
 				.filter((task) => task.listId === listId && task.completedAt)
 				.map((task) => task.id)
 		});
-		return this.#send('delete the completed tasks', () => api.deleteCompletedTasks(listId));
+		return this.#send('delete the completed tasks', () => this.#port.deleteCompletedTasks(listId));
 	}
 }
 
