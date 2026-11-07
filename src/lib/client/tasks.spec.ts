@@ -11,6 +11,7 @@ import {
 	getListTasks,
 	getTask,
 	getTasksOfLists,
+	reopenTask,
 	updateTask
 } from '#lib/server/tasks.js';
 
@@ -657,6 +658,99 @@ describe('TaskStore through the in-process adapter', () => {
 			expect(drift(optimistic, store)).toEqual({ 'Water plants': ['recurrence', 'seriesId'] });
 			expect(store.get(task.id)).toMatchObject({ recurrence: null, seriesId: null });
 			expectInSyncWithServer(store, list.id);
+		});
+
+		describe('complete, then Undo (not a Reopen)', () => {
+			it('an Occurrence clicked at once: Undo waits for the answer, and the next one goes', async () => {
+				const list = createList(scope(), { name: 'Groceries' });
+				const { task } = plants(list.id);
+				const { store, toasts, port } = setup(list.id);
+				const before = serverTasks(list.id);
+
+				void store.complete(task.id);
+				toasts.act(toasts.actionable!.id);
+				await port.idle();
+
+				expect(port.requests.map((request) => request.path).slice(-2)).toEqual([
+					`/api/tasks/${task.id}/complete`,
+					'/api/undo'
+				]);
+				expect(serverTasks(list.id)).toEqual(before);
+				expectInSyncWithServer(store, list.id);
+				expect(port.reloads).toBe(0);
+			});
+
+			it('a Subtask: the parent isn’t marked as changed, so the previous Occurrence still gives way', async () => {
+				const list = createList(scope(), { name: 'Groceries' });
+				const { task } = plants(list.id);
+				completeTask(scope(), task.id);
+				const next = getListTasks(scope(), list.id).find((t) => !t.completedAt && !t.parentId)!;
+				const fill = getListTasks(scope(), list.id).find((t) => t.parentId === next.id)!;
+				const { store, toasts, port } = setup(list.id);
+				const before = serverTasks(list.id);
+
+				await store.complete(fill.id);
+				toasts.act(toasts.actionable!.id);
+				await port.idle();
+
+				expect(serverTasks(list.id)).toEqual(before);
+				expectInSyncWithServer(store, list.id);
+				expect(reopenTask(scope(), task.id)?.deleted).toContain(next.id);
+			});
+
+			it('the final Occurrence: it keeps its Recurrence', async () => {
+				const list = createList(scope(), { name: 'Groceries' });
+				const { task } = plants(list.id);
+				updateTask(scope(), task.id, {
+					recurrence: parseRecurrence({
+						frequency: 'weekly',
+						interval: 1,
+						weekdays: [1],
+						end: { kind: 'count', count: 1 },
+						anchor: 'schedule'
+					})
+				});
+				const { store, toasts, port } = setup(list.id);
+				const before = serverTasks(list.id);
+
+				await store.complete(task.id);
+				toasts.act(toasts.actionable!.id);
+				await port.idle();
+
+				expect(serverTasks(list.id)).toEqual(before);
+				expect(store.get(task.id)?.recurrence).not.toBeNull();
+				expectInSyncWithServer(store, list.id);
+			});
+
+			it('after the next Occurrence was changed: a toast and a reload, and nothing overwritten', async () => {
+				const list = createList(scope(), { name: 'Groceries' });
+				const { task } = plants(list.id);
+				const { store, toasts, port } = setup(list.id);
+
+				await store.complete(task.id);
+				const next = getListTasks(scope(), list.id).find((t) => !t.completedAt && !t.parentId)!;
+				updateTask(scope(), next.id, { title: 'Water the plants' });
+				const moved = serverTasks(list.id);
+				toasts.act(toasts.actionable!.id);
+				await port.idle();
+
+				expect(messages(toasts)).toContain(
+					"Couldn't undo. The Task or its Subtasks changed in the meantime."
+				);
+				expect(port.reloads).toBe(1);
+				expect(serverTasks(list.id)).toEqual(moved);
+			});
+
+			it('completing what is already Completed offers no Undo', async () => {
+				const list = createList(scope(), { name: 'Groceries' });
+				const task = seed(list.id, 'Milk');
+				completeTask(scope(), task.id);
+				const { store, toasts } = setup(list.id);
+
+				await store.complete(task.id);
+
+				expect(toasts.actionable).toBeUndefined();
+			});
 		});
 
 		it('skip: the next Occurrence comes with the answer, and Undo puts the skipped one back', async () => {

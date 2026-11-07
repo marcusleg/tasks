@@ -27,8 +27,8 @@ export interface DeletedTaskChanges extends TaskChanges {
 export interface TaskPort {
 	createTask(input: NewTaskInput): Promise<TaskChanges>;
 	updateTask(id: string, patch: TaskPatch, applyTo?: ApplyTo): Promise<TaskChanges>;
-	/** `timeZone` is the browser's, for completion-anchored Recurrences. */
-	completeTask(id: string, timeZone: string): Promise<TaskChanges>;
+	/** `timeZone` is the browser's, for completion-anchored Recurrences. `undo`: see {@link undo}. */
+	completeTask(id: string, timeZone: string): Promise<TaskChanges & { undo: string | null }>;
 	reopenTask(id: string): Promise<TaskChanges>;
 	deleteTask(
 		id: string,

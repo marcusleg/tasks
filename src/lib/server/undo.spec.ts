@@ -145,6 +145,80 @@ describe('after Undo of deleting a Subtask of the next Occurrence', () => {
 	});
 });
 
+describe('Undo of completing, unlike Reopen (#60)', () => {
+	it('a Subtask of an Occurrence: the parent isn’t marked as changed, so the previous one still gives way', () => {
+		const family = setUp();
+		const previous = family.parent;
+		const next = generated(family);
+
+		expectUndoRestoresLists(next.scope, [next.listId], () =>
+			completeTask(next.scope, next.fern.id)
+		);
+
+		expect(getTask(next.scope, next.parent.id)?.changedSinceGenerated).toBe(false);
+		expect(reopenTask(next.scope, previous.id)?.deleted).toContain(next.parent.id);
+	});
+
+	it('a Subtask completed, with Reopen: the parent counts as changed, so the previous one comes back as a one-off', () => {
+		const family = setUp();
+		const previous = family.parent;
+		const next = generated(family);
+		completeTask(next.scope, next.fern.id);
+		reopenTask(next.scope, next.fern.id);
+
+		expect(reopenTask(next.scope, previous.id)?.deleted).toEqual([]);
+		expect(getTask(next.scope, previous.id)?.recurrence).toBeNull();
+	});
+
+	it('the final Occurrence keeps its Recurrence and series', () => {
+		const family = setUp();
+		const { scope, parent } = family;
+		updateTask(scope, parent.id, {
+			recurrence: parseRecurrence({
+				frequency: 'weekly',
+				interval: 1,
+				end: { kind: 'count', count: 1 },
+				anchor: 'schedule'
+			})
+		});
+		const before = getTask(scope, parent.id)!;
+		expect(before.recurrence).not.toBeNull();
+
+		const changes = expectUndoRestoresLists(scope, [family.listId], () =>
+			completeTask(scope, parent.id)
+		);
+
+		expect(changes.deleted).toEqual([]);
+		expect(getTask(scope, parent.id)).toMatchObject({
+			recurrence: before.recurrence,
+			seriesId: before.seriesId
+		});
+	});
+
+	it('an Occurrence: the next one is gone, and a change to it in the meantime refuses Undo', () => {
+		const family = setUp();
+		const { scope, listId, parent } = family;
+		const undoId = undoable(scope, () => completeTask(scope, parent.id))!.undoId!;
+		const next = getListTasks(scope, listId).find(
+			(task) => task.parentId === null && task.completedAt === null && task.id !== parent.id
+		)!;
+		updateTask(scope, next.id, { title: 'Water the plants' });
+
+		expect(() => undoLatest(scope, undoId)).toThrow(UndoConflictError);
+		expect(getTask(scope, next.id)?.title).toBe('Water the plants');
+		expect(getTask(scope, parent.id)?.completedAt).not.toBeNull();
+	});
+
+	it('completing what is already Completed changes nothing, and offers no Undo', () => {
+		const family = setUp(false);
+		completeTask(family.scope, family.moss.id);
+
+		const again = undoable(family.scope, () => completeTask(family.scope, family.moss.id));
+
+		expect(again?.undoId).toBeNull();
+	});
+});
+
 describe('the action behind the record doesn’t matter', () => {
 	it('a Task with Subtasks deleted', () => {
 		const family = setUp();

@@ -373,3 +373,82 @@ test('a failed request toasts and the screen catches up', async ({ page }) => {
 	await expect(open).toBeVisible({ timeout: 3000 });
 	await expect(open).not.toBeChecked();
 });
+
+test('complete a Subtask of an Occurrence, then Undo: reopening the previous Occurrence still makes this one give way', async ({
+	page
+}) => {
+	await waterPlantsWithTemplate(page);
+	await saved(page, () => checkbox(page, 'Water plants').click());
+	await expect(row(page, 'Water plants')).toContainText('17 Mar 2027');
+	await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Fern', 'Cactus']);
+
+	await saved(page, () =>
+		column(page, LIST)
+			.getByRole('list', { name: 'Subtasks of Water plants', exact: true })
+			.getByRole('checkbox', { name: 'Fern', exact: true })
+			.click()
+	);
+	await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Cactus']);
+	await expect(toast(page)).toContainText('Task completed');
+
+	const undone = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/undo');
+	await undoButton(page).click();
+	expect((await undone).ok()).toBe(true);
+	await expect(subtaskTitles(page, LIST, 'Water plants')).toHaveText(['Fern', 'Cactus']);
+
+	// Reopen from the Completed section: the Occurrence it created gives way, since Undo left it
+	// unmarked.
+	await column(page, LIST)
+		.getByText(/Completed \(/)
+		.click();
+	await saved(page, () =>
+		column(page, LIST)
+			.getByRole('list', { name: 'Completed tasks' })
+			.getByRole('checkbox', { name: 'Water plants', exact: true })
+			.click()
+	);
+	await expect(openTitles(page, LIST)).toHaveText(['Water plants']);
+	await expect(row(page, 'Water plants')).toContainText('10 Mar 2027');
+	await expect(
+		row(page, 'Water plants').getByRole('img', { name: 'Repeats weekly' })
+	).toBeVisible();
+});
+
+test('complete the final Occurrence, then Undo: it keeps its Recurrence', async ({ page }) => {
+	const task = await addTaskAndGet(page, 'Water plants');
+	const patched = await page.request.patch(`/api/tasks/${task.id}`, {
+		data: {
+			planned: { kind: 'date', date: '2027-03-10' },
+			recurrence: {
+				frequency: 'weekly',
+				interval: 1,
+				end: { kind: 'count', count: 1 },
+				anchor: 'schedule'
+			}
+		}
+	});
+	expect(patched.ok()).toBe(true);
+	await page.reload();
+	await expect(
+		row(page, 'Water plants').getByRole('img', { name: 'Repeats weekly' })
+	).toBeVisible();
+
+	await saved(page, () => checkbox(page, 'Water plants').click());
+	await expect(openTitles(page, LIST)).toHaveCount(0);
+	await expect(toast(page)).toContainText('Task completed');
+
+	const undone = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/undo');
+	await undoButton(page).click();
+	expect((await undone).ok()).toBe(true);
+	await expect(openTitles(page, LIST)).toHaveText(['Water plants']);
+	await expect(
+		row(page, 'Water plants').getByRole('img', { name: 'Repeats weekly' })
+	).toBeVisible();
+
+	await page.reload();
+	await expect(openTitles(page, LIST)).toHaveText(['Water plants']);
+	await expect(row(page, 'Water plants')).toContainText('10 Mar 2027');
+	await expect(
+		row(page, 'Water plants').getByRole('img', { name: 'Repeats weekly' })
+	).toBeVisible();
+});

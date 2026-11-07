@@ -106,9 +106,16 @@ export const api = {
 	/** `applyTo`: which Occurrences of a recurring Task (or its Subtasks) the change reaches. */
 	updateTask: (id: string, patch: TaskPatch, applyTo?: ApplyTo) =>
 		request<TaskChanges>('PATCH', task(id), { ...patch, applyTo }),
-	/** `timeZone` is the browser's, for completion-anchored Recurrences. */
+	/**
+	 * `timeZone` is the browser's, for completion-anchored Recurrences. `undo` is for
+	 * {@link api.undo}.
+	 */
 	completeTask: (id: string, timeZone: string) =>
-		request<TaskChanges>('POST', resolve('/api/tasks/[id]/complete', { id }), { timeZone }),
+		request<TaskChanges & { undo: string | null }>(
+			'POST',
+			resolve('/api/tasks/[id]/complete', { id }),
+			{ timeZone }
+		),
 	reopenTask: (id: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/reopen', { id }), {}),
 	/**
