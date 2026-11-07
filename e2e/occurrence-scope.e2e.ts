@@ -253,9 +253,9 @@ test('Undo after deleting This Occurrence brings it back instead of the next one
 	);
 	await expect(openRow(page, 'Water plants')).toContainText('17 Mar 2027');
 
-	const restore = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/tasks/restore');
+	const undo = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/undo');
 	await undoButton(page).click();
-	expect((await restore).ok()).toBe(true);
+	expect((await undo).ok()).toBe(true);
 
 	await expect(openTitles(page, LIST)).toHaveText(['Water plants']);
 	await expect(openRow(page, 'Water plants')).toContainText('10 Mar 2027');

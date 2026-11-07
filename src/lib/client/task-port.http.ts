@@ -11,7 +11,6 @@ export const httpTaskPort: TaskPort = {
 	reopenTask: (id) => api.reopenTask(id),
 	deleteTask: (id, options) => api.deleteTask(id, options),
 	undo: (undoId) => api.undo(undoId),
-	restoreTasks: (tasks, replaces) => api.restoreTasks(tasks, replaces),
 	moveTask: (id, move) => api.moveTask(id, move),
 	deleteCompletedTasks: (listId) => api.deleteCompletedTasks(listId),
 	reload: () => invalidate(TASKS_DEPENDENCY)

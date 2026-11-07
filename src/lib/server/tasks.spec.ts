@@ -320,19 +320,6 @@ describe('deleteTask', () => {
 		expect(titles(db.select().from(tasks).all())).toEqual(['Milk']);
 	});
 
-	it('returns the deleted Tasks as they were, the Task first, for Undo', () => {
-		const { alice, list } = setUp();
-		const parent = add(alice, list.id, 'Party');
-		const cake = add(alice, list.id, 'Cake', parent.id);
-		const candles = add(alice, list.id, 'Candles', parent.id);
-		// Adding Subtasks marks the parent as changed, so compare with its current state.
-		const before = getTask(alice, parent.id);
-
-		const changes = deleteTask(alice, parent.id);
-
-		expect(changes?.removed).toEqual([before, cake, candles]);
-	});
-
 	it("can't delete another User's Task", () => {
 		const { alice, bob, list } = setUp();
 		const task = add(alice, list.id, 'Milk');

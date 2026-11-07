@@ -592,12 +592,12 @@ describe('TaskStore through the in-process adapter', () => {
 			});
 			expectInSyncWithServer(store, list.id);
 
-			// Undo restores the skipped Occurrence (same ids) and removes the next one it replaced.
+			// The server's Undo restores the skipped Occurrence (same ids) and removes the next one.
 			toasts.act(toasts.actionable!.id);
 			await port.idle();
 			expect(store.all.map((t) => t.id).sort()).toEqual(before.map((t) => t.id).sort());
 			expect(drift(before, store)).toEqual({});
-			expect(port.requests.at(-1)?.body).toMatchObject({ replaces: expect.any(String) });
+			expect(port.requests.at(-1)?.path).toBe('/api/undo');
 			expectInSyncWithServer(store, list.id);
 		});
 

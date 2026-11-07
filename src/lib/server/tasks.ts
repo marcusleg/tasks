@@ -618,16 +618,14 @@ function deleteWithSubtasks(scope: UserScope, id: string): string[] {
 	return [id, ...subtaskIds];
 }
 
-/** What {@link deleteTask} removed, with the Tasks as they were, so Undo can restore them. */
+/** What {@link deleteTask} changed. */
 export interface DeletedTasks extends TaskChangeSet {
-	/** The deleted Task first, then its Subtasks in Custom Order. */
-	removed: Task[];
-	/** The Occurrence that took a skipped one's place, which Undo replaces again; else `null`. */
+	/** The Occurrence that took a skipped one's place; else `null`. */
 	nextOccurrenceId: string | null;
 }
 
 /**
- * Deletes a Task and its Subtasks, and returns them as they were (for `restoreTasks`).
+ * Deletes a Task and its Subtasks.
  * `undefined` if the Task isn't the User's.
  *
  * For the current Occurrence of a recurring Task, `applyTo` "occurrence" skips it: it is deleted
@@ -674,10 +672,8 @@ export function deleteTask(
 			upserted.push(...created);
 		}
 		const deleted = deleteWithSubtasks(scope, id);
-		const removed = [task, ...subtasks];
 		return {
 			...changeSet([...upserted, ...change.deleted(id)], deleted),
-			removed,
 			nextOccurrenceId
 		};
 	});

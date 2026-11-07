@@ -9,7 +9,7 @@ import type { SerializedDueDate, SerializedPlannedDate } from '#lib/domain/dates
 import type { TaskMove } from '#lib/domain/moves.js';
 import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
 import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
-import type { Priority, SerializedTask, TaskChanges } from '#lib/domain/tasks.js';
+import type { Priority, TaskChanges } from '#lib/domain/tasks.js';
 
 export class ApiError extends Error {
 	constructor(
@@ -112,31 +112,18 @@ export const api = {
 	reopenTask: (id: string) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/reopen', { id }), {}),
 	/**
-	 * `undo` is for {@link api.undo}. `removed` holds the deleted Tasks as they were, for
-	 * {@link api.restoreTasks}; `next` is the Occurrence that took a skipped one's place. `applyTo`
-	 * "occurrence" skips a recurring Task's current Occurrence; `timeZone` is the browser's, for
-	 * completion-anchored Recurrences.
+	 * `undo` is for {@link api.undo}. `applyTo` "occurrence" skips a recurring Task's current
+	 * Occurrence; `timeZone` is the browser's, for completion-anchored Recurrences.
 	 */
 	deleteTask: (id: string, options: { applyTo?: ApplyTo; timeZone?: string } = {}) => {
 		const query = new URLSearchParams();
 		if (options.applyTo) query.set('applyTo', options.applyTo);
 		if (options.timeZone) query.set('timeZone', options.timeZone);
 		const search = query.size > 0 ? `?${query}` : '';
-		return request<
-			TaskChanges & { undo: string | null; removed: SerializedTask[]; next: string | null }
-		>('DELETE', `${task(id)}${search}`);
+		return request<TaskChanges & { undo: string | null }>('DELETE', `${task(id)}${search}`);
 	},
 	/** Puts back the state before the action whose answer carried this `undo` (ADR 0004). */
 	undo: (undoId: string) => request<TaskChanges>('POST', resolve('/api/undo'), { undoId }),
-	/**
-	 * Undo for `deleteTask` of a top-level Task: puts its `removed` Tasks back; `replaces` (its
-	 * `next`) removes the Occurrence that took a skipped one's place.
-	 */
-	restoreTasks: (tasks: SerializedTask[], replaces?: string | null) =>
-		request<TaskChanges>('POST', resolve('/api/tasks/restore'), {
-			tasks,
-			...(replaces && { replaces })
-		}),
 	moveTask: (id: string, move: TaskMove) =>
 		request<TaskChanges>('POST', resolve('/api/tasks/[id]/move', { id }), move),
 

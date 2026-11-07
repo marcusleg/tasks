@@ -1,6 +1,5 @@
 import { json } from '@sveltejs/kit';
 import { notFound, optionalString, readJson, withInputErrors } from '#lib/server/http.js';
-import { serializeTask } from '#lib/domain/tasks.js';
 import { userScope } from '#lib/server/scope.js';
 import {
 	readApplyTo,
@@ -40,11 +39,8 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 };
 
 /**
- * Deletes a Task and its Subtasks → `TaskChanges & { undo, removed: SerializedTask[], next }`.
- * `undo` is what `POST /api/undo` takes to undo this. `removed` holds the deleted Tasks as they were
- * (the Task first, then its Subtasks), for `POST /api/tasks/restore`; `next` is the id of the
- * Occurrence that took a skipped one's place (`null` otherwise), which that restore's `replaces`
- * removes again.
+ * Deletes a Task and its Subtasks → `TaskChanges & { undo }`.
+ * `undo` is what `POST /api/undo` takes to undo this, skipping an Occurrence included.
  * For a recurring Task, `?applyTo=occurrence` skips to the next Occurrence (counted in the
  * browser's `?timeZone` for completion-anchored rules), and `future` (the default) ends the
  * Recurrence; for a Subtask of one, it says whether future Occurrences keep it.
@@ -59,8 +55,6 @@ export const DELETE: RequestHandler = ({ locals, params, url }) => {
 	if (!changes) notFound('Task');
 	return json({
 		...serializeChanges(changes),
-		undo: changes.undoId,
-		removed: changes.removed.map(serializeTask),
-		next: changes.nextOccurrenceId
+		undo: changes.undoId
 	});
 };
