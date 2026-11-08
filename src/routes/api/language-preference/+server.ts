@@ -12,5 +12,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
 	const scope = userScope(locals);
 	const body = await readJson(request);
 	const value = requiredString(body, 'languagePreference');
-	return json({ languagePreference: withInputErrors(() => setLanguagePreference(scope, value)) });
+	return json({
+		languagePreference: withInputErrors(() => setLanguagePreference(scope, value, locals.language))
+	});
 };

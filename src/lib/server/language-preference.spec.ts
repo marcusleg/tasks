@@ -17,7 +17,7 @@ function setup() {
 describe('the Language preference', () => {
 	it('is Automatic for a User who never chose, with or without a settings row', () => {
 		const { alice, bob } = setup();
-		ensureUserSetUp(alice);
+		ensureUserSetUp(alice, 'en');
 
 		expect(getLanguagePreference(alice)).toBe('automatic');
 		expect(getLanguagePreference(bob)).toBe('automatic');
@@ -26,22 +26,22 @@ describe('the Language preference', () => {
 	it('is stored per User', () => {
 		const { alice, bob } = setup();
 
-		expect(setLanguagePreference(alice, 'de')).toBe('de');
+		expect(setLanguagePreference(alice, 'de', 'en')).toBe('de');
 
 		expect(getLanguagePreference(alice)).toBe('de');
 		expect(getLanguagePreference(bob)).toBe('automatic');
 
-		setLanguagePreference(bob, 'en');
-		setLanguagePreference(alice, 'automatic');
+		setLanguagePreference(bob, 'en', 'en');
+		setLanguagePreference(alice, 'automatic', 'en');
 		expect(getLanguagePreference(alice)).toBe('automatic');
 		expect(getLanguagePreference(bob)).toBe('en');
 	});
 
 	it('can be set before the User has been set up, without skipping their first List', () => {
 		const { alice } = setup();
-		setLanguagePreference(alice, 'de');
+		setLanguagePreference(alice, 'de', 'en');
 
-		expect(ensureUserSetUp(alice)).toBe(false);
+		expect(ensureUserSetUp(alice, 'en')).toBe(false);
 		expect(getLanguagePreference(alice)).toBe('de');
 	});
 
@@ -49,14 +49,14 @@ describe('the Language preference', () => {
 		const { alice } = setup();
 
 		for (const value of ['fr', '', 'DE', undefined, 3]) {
-			expect(() => setLanguagePreference(alice, value)).toThrow(InvalidInputError);
+			expect(() => setLanguagePreference(alice, value, 'en')).toThrow(InvalidInputError);
 		}
 		expect(getLanguagePreference(alice)).toBe('automatic');
 	});
 
 	it('falls back to Automatic for a stored value we no longer speak', () => {
 		const { db, alice } = setup();
-		ensureUserSetUp(alice);
+		ensureUserSetUp(alice, 'en');
 		db.update(userPreferences).set({ languagePreference: 'fr' }).run();
 
 		expect(getLanguagePreference(alice)).toBe('automatic');
@@ -67,7 +67,7 @@ describe('the Language preference', () => {
 		const { token } = createSession(db, alice.userId);
 		expect(validateSessionToken(db, token)?.languagePreference).toBe('automatic');
 
-		setLanguagePreference(alice, 'de');
+		setLanguagePreference(alice, 'de', 'en');
 		expect(validateSessionToken(db, token)?.languagePreference).toBe('de');
 	});
 });
