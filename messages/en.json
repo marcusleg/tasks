@@ -10,6 +10,7 @@
 	"auth_not_allowed_text": "Your account isn't in the group that may use this app, so you can't sign in. Ask the administrator to add you to the group, or sign in with a different account.",
 	"auth_not_allowed_title": "Not allowed",
 	"auth_sign_in": "Sign in",
+	"default_list_name": "My Tasks",
 	"error_page_back": "Back to your tasks",
 	"error_page_error_tab": "Error",
 	"error_page_error_text": "Please try again in a moment.",

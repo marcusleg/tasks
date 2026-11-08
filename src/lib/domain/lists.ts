@@ -8,7 +8,6 @@ export const SORT_MODES = ['custom', 'planned', 'due', 'priority', 'title'] as c
 /** How a List is displayed; `custom` is Custom Order. */
 export type SortMode = (typeof SORT_MODES)[number];
 
-export const DEFAULT_LIST_NAME = 'My Tasks';
 export const MAX_LIST_NAME_LENGTH = 100;
 
 export interface List {

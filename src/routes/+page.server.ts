@@ -12,7 +12,7 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ locals, depends, parent, cookies }) => {
 	depends(TASKS_DEPENDENCY);
-	// The layout sets a new User up; wait for it so their "My Tasks" List is there.
+	// The layout sets a new User up; wait for it so their first List is there.
 	await parent();
 
 	const scope = userScope(locals);

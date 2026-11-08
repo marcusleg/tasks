@@ -22,30 +22,38 @@ function setUp() {
 }
 
 describe('ensureUserSetUp', () => {
-	it('gives a new User a "My Tasks" List', () => {
+	it('names the first List "My Tasks" for English', () => {
 		const { alice } = setUp();
 
-		expect(ensureUserSetUp(alice)).toBe(true);
+		expect(ensureUserSetUp(alice, 'en')).toBe(true);
 
 		expect(getLists(alice).map((list) => list.name)).toEqual(['My Tasks']);
 	});
 
-	it('is idempotent', () => {
+	it('names the first List "Meine Aufgaben" for German', () => {
 		const { alice } = setUp();
 
-		ensureUserSetUp(alice);
-		expect(ensureUserSetUp(alice)).toBe(false);
-		ensureUserSetUp(alice);
+		expect(ensureUserSetUp(alice, 'de')).toBe(true);
 
-		expect(getLists(alice)).toHaveLength(1);
+		expect(getLists(alice).map((list) => list.name)).toEqual(['Meine Aufgaben']);
 	});
 
-	it('does not bring "My Tasks" back after the User deleted every List', () => {
+	it('is idempotent, and keeps the name when the Language changes later', () => {
 		const { alice } = setUp();
-		ensureUserSetUp(alice);
+
+		ensureUserSetUp(alice, 'en');
+		expect(ensureUserSetUp(alice, 'en')).toBe(false);
+		expect(ensureUserSetUp(alice, 'de')).toBe(false);
+
+		expect(getLists(alice).map((list) => list.name)).toEqual(['My Tasks']);
+	});
+
+	it('does not bring the first List back after the User deleted every List', () => {
+		const { alice } = setUp();
+		ensureUserSetUp(alice, 'de');
 
 		deleteList(alice, getLists(alice)[0].id);
-		ensureUserSetUp(alice);
+		ensureUserSetUp(alice, 'de');
 
 		expect(getLists(alice)).toEqual([]);
 	});
@@ -53,8 +61,8 @@ describe('ensureUserSetUp', () => {
 	it('sets up each User separately', () => {
 		const { alice, bob } = setUp();
 
-		ensureUserSetUp(alice);
-		ensureUserSetUp(bob);
+		ensureUserSetUp(alice, 'en');
+		ensureUserSetUp(bob, 'de');
 
 		expect(getLists(alice)).toHaveLength(1);
 		expect(getLists(bob)).toHaveLength(1);
