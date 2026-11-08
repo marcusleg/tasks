@@ -6,7 +6,7 @@
  * - Planned: SUMMARY is the title. Date-only → all-day (`VALUE=DATE`, DTEND the next day); timed →
  *   `TZID` wall-clock start and DTEND = start + Duration in elapsed time (DURATION instead when
  *   that end is a repeated wall-clock time, which DTEND would read as the earlier instance).
- * - Due: SUMMARY is `Due: <title>`. Date-only → all-day; timed → zero-length, as `DURATION:PT0S`.
+ * - Due: SUMMARY is `Due: <title>` (`labels.due`; the labels speak the owner's Language, UIDs don't). Date-only → all-day; timed → zero-length, as `DURATION:PT0S`.
  *   RFC 5545 requires DTEND to be later than DTSTART, so DTEND = DTSTART would be invalid; a
  *   DURATION also makes a fixed length a one-option change (`dueEventMinutes`, e.g. 1).
  * - When both dates are the same day (date-only) or the same wall-clock time in the same zone,
@@ -63,6 +63,20 @@ export type CalendarTask = {
 	recurrence?: CalendarRecurrence;
 };
 
+/**
+ * The words the calendar adds around User content, in the Calendar Link owner's Language (the
+ * caller renders them; this module stays free of the request). Task titles, descriptions and List
+ * names are never translated.
+ */
+export type CalendarLabels = {
+	/** SUMMARY of a Due Date event: "Due: <title>". */
+	due: (title: string) => string;
+	/** First DESCRIPTION line: "List: <name>". */
+	list: (name: string) => string;
+	/** DESCRIPTION line of a dated Subtask: "Subtask of: <parent title>". */
+	subtaskOf: (parentTitle: string) => string;
+};
+
 export type CalendarRecurrence = {
 	/** Stable id shared by every Occurrence of the Recurrence; the series' UIDs derive from it. */
 	seriesId: string;
@@ -87,6 +101,7 @@ export type BuildCalendarInput = {
 	/** The Calendar Link's name, shown by calendar apps as the calendar's name. */
 	calendarName: string;
 	tasks: CalendarTask[];
+	labels: CalendarLabels;
 	/** The time the calendar is generated, published as each event's DTSTAMP. */
 	now: Temporal.Instant;
 	prodId?: string;
@@ -108,6 +123,7 @@ type Options = {
 	now: Temporal.Instant;
 	dueEventMinutes: number;
 	exactMonthEnd: boolean;
+	labels: CalendarLabels;
 	/** Zones used so far, with the first and last local date used in each. */
 	zones: Map<string, { first: Temporal.PlainDate; last: Temporal.PlainDate }>;
 };
@@ -144,9 +160,9 @@ function text(value: string): string {
 	);
 }
 
-function description(task: CalendarTask): string {
-	const header = [`List: ${task.listName}`];
-	if (task.parentTitle !== undefined) header.push(`Subtask of: ${task.parentTitle}`);
+function description(task: CalendarTask, labels: CalendarLabels): string {
+	const header = [labels.list(task.listName)];
+	if (task.parentTitle !== undefined) header.push(labels.subtaskOf(task.parentTitle));
 	const checklist = task.undatedSubtasks.map(
 		(subtask) => `${subtask.completed ? '☑' : '☐'} ${subtask.title}`
 	);
@@ -218,8 +234,8 @@ function event(kind: EventKind, publication: Publication, options: Options): str
 		`DTSTAMP:${formatUtc(options.now)}`,
 		...times,
 		...(rrule ? [`RRULE:${rrule}`] : []),
-		`SUMMARY:${text(kind === 'due' ? `Due: ${task.title}` : task.title)}`,
-		`DESCRIPTION:${text(description(task))}`,
+		`SUMMARY:${text(kind === 'due' ? options.labels.due(task.title) : task.title)}`,
+		`DESCRIPTION:${text(description(task, options.labels))}`,
 		`URL:${task.url}`,
 		'END:VEVENT'
 	];
@@ -333,6 +349,7 @@ export function buildCalendar(input: BuildCalendarInput): string {
 		now: input.now,
 		dueEventMinutes,
 		exactMonthEnd: input.exactMonthEnd ?? false,
+		labels: input.labels,
 		zones: new Map()
 	};
 	const events = input.tasks.flatMap((task) => taskEvents(task, options));

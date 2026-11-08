@@ -5,10 +5,17 @@
  */
 import { randomBytes } from 'node:crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
+import { isLanguagePreference, type LanguagePreference } from '#lib/language.js';
 import { parseCalendarLinkName, type SerializedCalendarLink } from '#lib/domain/calendar-links.js';
 import { InvalidInputError } from '#lib/domain/validation.js';
 import type { Db } from './db/client.js';
-import { calendarLinkLists, calendarLinks, lists, type CalendarLinkRow } from './db/schema.js';
+import {
+	calendarLinkLists,
+	calendarLinks,
+	lists,
+	userPreferences,
+	type CalendarLinkRow
+} from './db/schema.js';
 import { ownedBy, type UserScope } from './scope.js';
 
 export interface CalendarLink {
@@ -179,14 +186,27 @@ export function deleteCalendarLink(scope: UserScope, id: string): boolean {
 	);
 }
 
+/** A Calendar Link as the public feed sees it: with its owner's stored Language choice. */
+export type FeedCalendarLink = CalendarLink & { ownerLanguagePreference: LanguagePreference };
+
 /**
  * The Calendar Link with this token, for the public `.ics` endpoint. The token is high-entropy
  * (256 bits) and looked up by its unique index, so a timing side channel reveals nothing useful.
  */
-export function findCalendarLinkByToken(db: Db, token: string): CalendarLink | undefined {
+export function findCalendarLinkByToken(db: Db, token: string): FeedCalendarLink | undefined {
 	if (!TOKEN_PATTERN.test(token)) return undefined;
-	const row = db.select().from(calendarLinks).where(eq(calendarLinks.token, token)).get();
-	return row && withListIds(db, [row])[0];
+	// The owner's Language is read together with the link, joined on the link's own owner.
+	const found = db
+		.select({ link: calendarLinks, languagePreference: userPreferences.languagePreference })
+		.from(calendarLinks)
+		.leftJoin(userPreferences, eq(userPreferences.userId, calendarLinks.userId))
+		.where(eq(calendarLinks.token, token))
+		.get();
+	if (!found) return undefined;
+	const ownerLanguagePreference = isLanguagePreference(found.languagePreference)
+		? found.languagePreference
+		: 'automatic';
+	return { ...withListIds(db, [found.link])[0], ownerLanguagePreference };
 }
 
 export function markAccessed(db: Db, id: string, now = new Date()): void {

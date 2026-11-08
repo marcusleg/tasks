@@ -11,7 +11,8 @@ import {
 } from '#lib/domain/dates.js';
 import { parseRecurrence, type RecurrenceRule } from '#lib/domain/recurrence.js';
 import { buildCalendarLinkFeed, feedFilename, toCalendarTasks } from './calendar-feed';
-import { createCalendarLink } from './calendar-links';
+import { createCalendarLink, findCalendarLinkByToken } from './calendar-links';
+import { setLanguagePreference } from './language-preference';
 import { dueColumns, plannedColumns, recurrenceColumn } from './db/mapping';
 import { tasks } from './db/schema';
 import { createList } from './lists';
@@ -195,6 +196,48 @@ describe('buildCalendarLinkFeed', () => {
 		const feed = buildCalendarLinkFeed(db, link, ORIGIN, NOW);
 		expect(feed).toContain('My task');
 		expect(feed).not.toContain('Secret');
+	});
+});
+
+describe("buildCalendarLinkFeed in the owner's Language (#79)", () => {
+	/** The feed as the public endpoint builds it: the link looked up by token, no session. */
+	function publicFeed(preference: string | undefined) {
+		const { db, alice, bob } = setUp();
+		if (preference) setLanguagePreference(alice, preference, 'en');
+		// Bob chose German; Alice's feed must not follow him.
+		setLanguagePreference(bob, 'de', 'en');
+		const list = createList(alice, { name: 'Home' });
+		const parent = add(alice, list.id, 'Garden');
+		const child = add(alice, list.id, 'Water', {
+			parentId: parent.id,
+			planned: day('2026-03-05'),
+			due: day('2026-03-06')
+		});
+		const link = createCalendarLink(alice, { name: 'x' });
+		const feed = buildCalendarLinkFeed(db, findCalendarLinkByToken(db, link.token)!, ORIGIN, NOW);
+		return { feed, childId: child.id };
+	}
+
+	it('is German for an owner who chose Deutsch', () => {
+		const { feed } = publicFeed('de');
+		expect(feed).toContain('SUMMARY:Fällig: Water');
+		expect(feed).toContain('DESCRIPTION:Liste: Home\\nUnteraufgabe von: Garden');
+		expect(feed).not.toContain('Due:');
+	});
+
+	it.each([['en'], ['automatic'], [undefined]])('is English for an owner on %s', (preference) => {
+		const { feed } = publicFeed(preference);
+		expect(feed).toContain('SUMMARY:Due: Water');
+		expect(feed).toContain('DESCRIPTION:List: Home\\nSubtask of: Garden');
+	});
+
+	it('keeps the event UIDs whatever the Language', () => {
+		const german = publicFeed('de');
+		const english = publicFeed('en');
+		const uids = (feed: string, id: string) => [`UID:${id}-planned@tasks`, `UID:${id}-due@tasks`];
+		for (const { feed, childId } of [german, english]) {
+			for (const uid of uids(feed, childId)) expect(feed).toContain(uid);
+		}
 	});
 });
 

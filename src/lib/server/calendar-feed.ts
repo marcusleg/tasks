@@ -6,6 +6,9 @@ import { Temporal } from 'temporal-polyfill';
 import { buildCalendar, type CalendarTask } from '#lib/domain/ics.js';
 import { isDetached } from '#lib/domain/recurring-tasks.js';
 import type { Task } from '#lib/domain/tasks.js';
+import type { LanguagePreference } from '#lib/language.js';
+import { m } from '#lib/paraglide/messages.js';
+import { resolveLanguage } from './language.js';
 import type { Db } from './db/client.js';
 import { getLists } from './lists.js';
 import type { CalendarLink } from './calendar-links.js';
@@ -88,11 +91,13 @@ export function toCalendarTasks(input: {
 /** The iCalendar text for a Calendar Link: only the link owner's Tasks, in the Lists it covers. */
 export function buildCalendarLinkFeed(
 	db: Db,
-	link: CalendarLink,
+	link: CalendarLink & { ownerLanguagePreference?: LanguagePreference },
 	origin: string,
 	now = Temporal.Now.instant()
 ): string {
 	const scope: UserScope = { db, userId: link.userId };
+	// A calendar app's Accept-Language says nothing about the owner: only their stored choice counts.
+	const { language } = resolveLanguage(null, link.ownerLanguagePreference);
 	const allLists = getLists(scope);
 	const covered = link.allLists ? allLists : allLists.filter((l) => link.listIds.includes(l.id));
 	const tasks = getTasksOfLists(
@@ -106,6 +111,11 @@ export function buildCalendarLinkFeed(
 			listNames: new Map(covered.map((list) => [list.id, list.name])),
 			origin
 		}),
+		labels: {
+			due: (title) => m.feed_due({ title }, { locale: language }),
+			list: (name) => m.feed_list({ name }, { locale: language }),
+			subtaskOf: (title) => m.feed_subtask_of({ title }, { locale: language })
+		},
 		now
 	});
 }

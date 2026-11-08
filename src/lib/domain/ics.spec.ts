@@ -4,13 +4,14 @@ import { Temporal } from 'temporal-polyfill';
 import { describe, expect, it } from 'vitest';
 import {
 	dateOnly,
+	type DueDate,
 	timedDueDate,
 	timedPlannedDate,
 	toZonedDateTime,
 	unsetDate,
 	type TaskDate
 } from './dates';
-import { buildCalendar, type CalendarTask } from './ics';
+import { buildCalendar, type CalendarLabels, type CalendarTask } from './ics';
 import {
 	nextOccurrence,
 	parseRecurrence,
@@ -20,6 +21,18 @@ import {
 } from './recurrence';
 
 const now = Temporal.Instant.from('2026-11-02T08:30:15.123Z');
+
+const labels: CalendarLabels = {
+	due: (title) => `Due: ${title}`,
+	list: (name) => `List: ${name}`,
+	subtaskOf: (title) => `Subtask of: ${title}`
+};
+
+const germanLabels: CalendarLabels = {
+	due: (title) => `Fällig: ${title}`,
+	list: (name) => `Liste: ${name}`,
+	subtaskOf: (title) => `Unteraufgabe von: ${title}`
+};
 
 /** The content lines of an iCalendar document, unfolded (RFC 5545 §3.1). */
 function lines(ics: string): string[] {
@@ -45,7 +58,7 @@ function task(overrides: Partial<CalendarTask> = {}): CalendarTask {
 }
 
 function calendarOf(...tasks: CalendarTask[]): string {
-	return buildCalendar({ calendarName: 'Home', tasks, now });
+	return buildCalendar({ calendarName: 'Home', labels, tasks, now });
 }
 
 function events(ics: string): ICAL.Component[] {
@@ -60,9 +73,50 @@ function eventLines(ics: string): string[] {
 	return all.slice(begin + 1, all.indexOf('END:VEVENT'));
 }
 
+describe("labels in the owner's Language", () => {
+	const planned = timedPlannedDate('2026-11-05T09:00', 'Europe/Berlin', 30);
+	const due = dateOnly('2026-11-06') as DueDate;
+	const subtask = task({ planned, due, parentTitle: 'Garden' });
+
+	it('are English: "Due:", "List:" and "Subtask of:"', () => {
+		const ics = buildCalendar({ calendarName: 'Home', labels, tasks: [subtask], now });
+		const all = events(ics);
+		expect(all.map((e) => e.getFirstPropertyValue('summary'))).toEqual([
+			'Water the plants',
+			'Due: Water the plants'
+		]);
+		expect(all[0].getFirstPropertyValue('description')).toContain('List: Home\nSubtask of: Garden');
+	});
+
+	it('are German: "Fällig:", "Liste:" and "Unteraufgabe von:"', () => {
+		const ics = buildCalendar({
+			calendarName: 'Home',
+			labels: germanLabels,
+			tasks: [subtask],
+			now
+		});
+		const all = events(ics);
+		expect(all.map((e) => e.getFirstPropertyValue('summary'))).toEqual([
+			'Water the plants',
+			'Fällig: Water the plants'
+		]);
+		expect(all[1].getFirstPropertyValue('description')).toContain(
+			'Liste: Home\nUnteraufgabe von: Garden'
+		);
+	});
+
+	it('leave the event UIDs alone', () => {
+		const uids = (l: CalendarLabels) =>
+			events(buildCalendar({ calendarName: 'Home', labels: l, tasks: [subtask], now })).map((e) =>
+				e.getFirstPropertyValue('uid')
+			);
+		expect(uids(germanLabels)).toEqual(uids(labels));
+	});
+});
+
 describe('the calendar', () => {
 	it('is a published Gregorian iCalendar with a name, refresh hint and CRLF line endings', () => {
-		const ics = buildCalendar({ calendarName: 'Work', tasks: [], now });
+		const ics = buildCalendar({ calendarName: 'Work', labels, tasks: [], now });
 
 		expect(ics.startsWith('BEGIN:VCALENDAR\r\n')).toBe(true);
 		expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true);
@@ -80,7 +134,13 @@ describe('the calendar', () => {
 	});
 
 	it('takes a custom PRODID', () => {
-		const ics = buildCalendar({ calendarName: 'Work', tasks: [], now, prodId: '-//Acme//X//EN' });
+		const ics = buildCalendar({
+			calendarName: 'Work',
+			labels,
+			tasks: [],
+			now,
+			prodId: '-//Acme//X//EN'
+		});
 
 		expect(parse(ics).getFirstPropertyValue('prodid')).toBe('-//Acme//X//EN');
 	});
@@ -226,6 +286,7 @@ describe('a timed Due Date', () => {
 	it('can be published with a fixed length instead, for calendars that hide zero-length events', () => {
 		const ics = buildCalendar({
 			calendarName: 'Home',
+			labels,
 			tasks: [task({ due: timedDueDate('2026-11-06T17:00', 'Europe/Berlin') })],
 			now,
 			dueEventMinutes: 1
@@ -235,9 +296,9 @@ describe('a timed Due Date', () => {
 	});
 
 	it.each([-1, 1.5, Number.NaN])('rejects a fixed length of %s minutes', (dueEventMinutes) => {
-		expect(() => buildCalendar({ calendarName: 'Home', tasks: [], now, dueEventMinutes })).toThrow(
-			RangeError
-		);
+		expect(() =>
+			buildCalendar({ calendarName: 'Home', labels, tasks: [], now, dueEventMinutes })
+		).toThrow(RangeError);
 	});
 });
 
@@ -344,6 +405,7 @@ describe('text values', () => {
 	it('round-trip in the calendar name, List name, description and checklist', () => {
 		const ics = buildCalendar({
 			calendarName: 'Home, garden; more',
+			labels,
 			now,
 			tasks: [
 				task({
@@ -869,6 +931,7 @@ describe('a monthly series on the 29th or 30th', () => {
 	it('can use the exact rule, which clamps to the end of February like the app', () => {
 		const ics = buildCalendar({
 			calendarName: 'Home',
+			labels,
 			tasks: [monthly30],
 			now,
 			exactMonthEnd: true

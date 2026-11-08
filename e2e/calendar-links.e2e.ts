@@ -93,3 +93,42 @@ test('unknown tokens get a bare 404 and /settings needs a login', async ({ reque
 	await expect(page).toHaveURL(/\/auth\/login/);
 	await anonymous.close();
 });
+
+test("a Calendar Link speaks its owner's Language, whatever the fetching app asks for", async ({
+	page,
+	context,
+	request
+}) => {
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+	await loginAs(page);
+	const title = `Watering ${Date.now()}`;
+	await addTask(page, title);
+	const db = new Database(process.env.E2E_DATABASE_PATH!);
+	try {
+		db.pragma('busy_timeout = 5000');
+		db.prepare('update tasks set due_date = ? where title = ?').run('2026-05-04', title);
+	} finally {
+		db.close();
+	}
+	await page.goto('/settings');
+	await createLink(page, 'Phone');
+	await page.getByRole('button', { name: 'Copy URL' }).click();
+	const url = await page.evaluate(() => navigator.clipboard.readText());
+
+	// Automatic: English, even for a calendar app that asks for German.
+	const automatic = await (await request.get(url, { headers: { 'accept-language': 'de' } })).text();
+	expect(automatic).toContain(`SUMMARY:Due: ${title}`);
+
+	// Choosing Deutsch changes the next fetch, not the UIDs.
+	await page.evaluate(async () => {
+		await fetch('/api/language-preference', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ languagePreference: 'de' })
+		});
+	});
+	const german = await (await request.get(url, { headers: { 'accept-language': 'en' } })).text();
+	expect(german).toContain(`SUMMARY:Fällig: ${title}`);
+	expect(german).toContain('DESCRIPTION:Liste: ');
+	expect(german.match(/^UID:.*$/gm)).toEqual(automatic.match(/^UID:.*$/gm));
+});
