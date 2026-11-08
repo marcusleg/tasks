@@ -187,10 +187,7 @@ describe('ScopedTasks in a panel (remembers)', () => {
 		expect(scopes.unanswered('series', 'dates')).toBe(true);
 		await scopes.update('series', { title: 'b' }, { ...options, group: 'dates' });
 
-		expect(prompt.asked.map((q) => q.remembersFor)).toEqual([
-			'title, details and priority changes',
-			'date changes'
-		]);
+		expect(prompt.asked.map((q) => q.remembersFor)).toEqual(['details', 'dates']);
 		expect(sent.map((s) => s.applyTo)).toEqual(['occurrence', 'occurrence', 'future']);
 		expect(scopes.chosen).toEqual({ details: 'occurrence', dates: 'future' });
 	});
@@ -205,7 +202,7 @@ describe('ScopedTasks in a panel (remembers)', () => {
 		await scopes.update('sub', { title: 'b' }, { ...options, group: 'dates' });
 
 		expect(prompt.ask).toHaveBeenCalledOnce();
-		expect(prompt.asked[0].remembersFor).toBe('subtask changes');
+		expect(prompt.asked[0].remembersFor).toBe('subtasks');
 		expect(sent.map((s) => s.applyTo)).toEqual(['occurrence', 'occurrence']);
 		expect(scopes.chosen).toEqual({ subtasks: 'occurrence' });
 	});
@@ -311,7 +308,7 @@ describe('ScopedTasks.add', () => {
 		expect(prompt.asked[0]).toMatchObject({
 			action: 'edit',
 			seriesTitle: 'series',
-			remembersFor: 'subtask changes'
+			remembersFor: 'subtasks'
 		});
 		expect(sent.map((s) => s.applyTo)).toEqual(['occurrence', 'occurrence']);
 	});

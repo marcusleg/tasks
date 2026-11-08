@@ -4,10 +4,10 @@
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import {
 		getScopePrompt,
-		SCOPE_GROUP_LABELS,
 		ScopedTasks,
 		type ScopeGroup
 	} from '#lib/client/occurrence-scope.svelte.js';
+	import { scopeNote as describeScope } from '#lib/client/scope-messages.js';
 	import { openTask } from '#lib/client/task-panel.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import LinkifiedText from '#lib/components/LinkifiedText.svelte';
@@ -137,13 +137,7 @@
 	/** What the panel remembers, e.g. "Date changes apply to this occurrence only." */
 	const scopeNote = $derived(
 		Object.entries(scopes.chosen)
-			.map(([group, applyTo]) => {
-				const label = SCOPE_GROUP_LABELS[group as ScopeGroup];
-				const what = label[0].toUpperCase() + label.slice(1);
-				const scope =
-					applyTo === 'occurrence' ? 'this occurrence only' : 'this and all future occurrences';
-				return `${what} apply to ${scope}.`;
-			})
+			.map(([group, applyTo]) => describeScope(group as ScopeGroup, applyTo))
 			.join(' ')
 	);
 
@@ -246,7 +240,7 @@
 			<p class="scope-note" role="status">
 				<span>{scopeNote}</span>
 				<button type="button" class="link-button" onclick={() => scopes.forget()}>
-					Ask again
+					{m.scope_ask_again()}
 				</button>
 			</p>
 		{/if}

@@ -23,14 +23,17 @@ import type { TaskPatch } from './task-port.js';
 
 export type { ApplyTo };
 
+/** Field groups whose answer the detail panel remembers separately. */
+export type ScopeGroup = 'details' | 'dates' | 'subtasks';
+
 export interface ScopeQuestion {
 	action: 'edit' | 'delete';
 	/** The recurring Task's Title. */
 	seriesTitle: string;
 	/** The Subtask's Title, when the change is to a Subtask of the recurring Task. */
 	subtaskTitle?: string;
-	/** What the answer is remembered for in the open panel, e.g. "date changes". */
-	remembersFor?: string;
+	/** The field group the answer is remembered for in the open panel. */
+	remembersFor?: ScopeGroup;
 }
 
 export class ScopePrompt {
@@ -80,15 +83,6 @@ export function seriesTarget(
 	if (parent?.recurrence && !parent.completedAt) return { series: parent, subtask: task };
 	return null;
 }
-
-/** Field groups whose answer the detail panel remembers separately. */
-export type ScopeGroup = 'details' | 'dates' | 'subtasks';
-
-export const SCOPE_GROUP_LABELS: Record<ScopeGroup, string> = {
-	details: 'title, details and priority changes',
-	dates: 'date changes',
-	subtasks: 'subtask changes'
-};
 
 declare const decided: unique symbol;
 
@@ -234,7 +228,7 @@ export class ScopedTasks {
 			action: 'edit',
 			seriesTitle: target.series.title,
 			subtaskTitle: target.subtask?.title,
-			remembersFor: this.#remembers ? SCOPE_GROUP_LABELS[key] : undefined
+			remembersFor: this.#remembers ? key : undefined
 		});
 		if (!choice) return null;
 		if (this.#remembers) this.chosen = { ...this.chosen, [key]: choice };

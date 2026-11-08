@@ -14,12 +14,13 @@ export function inPriorityView(task: SerializedTask): boolean {
 
 /**
  * The Tasks of one Priority group: by Planned Date, then Due Date (in the viewer's zone, undated
- * last), then Title.
+ * last), then Title (the way `locale`, the User's date locale, sorts it).
  */
 export function priorityGroup(
 	tasks: Iterable<SerializedTask>,
 	priority: Priority,
-	timeZone: string
+	timeZone: string,
+	locale?: string
 ): SerializedTask[] {
 	return [...tasks]
 		.filter((task) => inPriorityView(task) && task.priority === priority)
@@ -28,7 +29,7 @@ export function priorityGroup(
 			(a, b) =>
 				compareTaskDates(a.planned, b.planned, timeZone) ||
 				compareTaskDates(a.due, b.due, timeZone) ||
-				a.task.title.localeCompare(b.task.title, undefined, { sensitivity: 'base' }) ||
+				a.task.title.localeCompare(b.task.title, locale, { sensitivity: 'base' }) ||
 				comparePositions(a.task.id, b.task.id)
 		)
 		.map(({ task }) => task);

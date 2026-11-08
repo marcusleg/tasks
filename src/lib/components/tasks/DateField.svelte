@@ -15,6 +15,7 @@
 		type TimedPlannedDate
 	} from '#lib/domain/dates.js';
 	import { viewerDateTime } from '#lib/domain/date-display.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	/**
 	 * Editor for a Planned Date or a Due Date: unset, a date, or a date and time (Planned adds a
@@ -30,6 +31,8 @@
 		kind: 'planned' | 'due';
 		/** The group's name, e.g. "Planned date". */
 		label: string;
+		/** The accessible name of the Clear button, e.g. "Clear planned date". */
+		clearLabel: string;
 		value: Value;
 		/** The browser's IANA zone, from the clock. */
 		timeZone: string;
@@ -38,7 +41,7 @@
 		deferTyped?: boolean;
 	};
 
-	let { kind, label, value, timeZone, onchange, deferTyped = false }: Props = $props();
+	let { kind, label, clearLabel, value, timeZone, onchange, deferTyped = false }: Props = $props();
 
 	const id = $props.id();
 	const TYPING_DELAY_MS = 600;
@@ -63,7 +66,10 @@
 	/** Where a timed value was set, when that's not here, with its time there. */
 	const elsewhere = $derived(
 		parsed.kind === 'timed' && parsed.timeZone !== timeZone
-			? `Set in ${parsed.timeZone.replaceAll('_', ' ')}: ${parsed.dateTime.toPlainTime().toString({ smallestUnit: 'minute' })} there`
+			? m.date_set_elsewhere({
+					zone: parsed.timeZone.replaceAll('_', ' '),
+					time: parsed.dateTime.toPlainTime().toString({ smallestUnit: 'minute' })
+				})
 			: null
 	);
 
@@ -169,19 +175,14 @@
 	<div class="label-row">
 		<h3 id="{id}-label" class="label">{label}</h3>
 		{#if parsed.kind !== 'unset'}
-			<button
-				type="button"
-				class="link-button"
-				aria-label="Clear {label.toLowerCase()}"
-				onclick={clear}
-			>
-				Clear
+			<button type="button" class="link-button" aria-label={clearLabel} onclick={clear}>
+				{m.date_clear()}
 			</button>
 		{/if}
 	</div>
 
 	<div class="inputs">
-		<label class="visually-hidden" for="{id}-date">Date</label>
+		<label class="visually-hidden" for="{id}-date">{m.date_date()}</label>
 		<input
 			bind:this={dateInput}
 			id="{id}-date"
@@ -191,7 +192,7 @@
 			onblur={onBlur}
 		/>
 		{#if timed}
-			<label class="visually-hidden" for="{id}-time">Time</label>
+			<label class="visually-hidden" for="{id}-time">{m.date_time()}</label>
 			<input
 				bind:this={timeInput}
 				id="{id}-time"
@@ -204,18 +205,18 @@
 	</div>
 
 	<div class="actions">
-		<button type="button" class="pill" onclick={() => pick(0)}>Today</button>
-		<button type="button" class="pill" onclick={() => pick(1)}>Tomorrow</button>
+		<button type="button" class="pill" onclick={() => pick(0)}>{m.date_today()}</button>
+		<button type="button" class="pill" onclick={() => pick(1)}>{m.date_tomorrow()}</button>
 		{#if timed}
-			<button type="button" class="pill" onclick={removeTime}>Remove time</button>
+			<button type="button" class="pill" onclick={removeTime}>{m.date_remove_time()}</button>
 		{:else if parsed.kind !== 'unset'}
-			<button type="button" class="pill" onclick={addTime}>Add time</button>
+			<button type="button" class="pill" onclick={addTime}>{m.date_add_time()}</button>
 		{/if}
 	</div>
 
 	{#if timed && kind === 'planned'}
 		<div class="duration">
-			<label for="{id}-duration">Duration</label>
+			<label for="{id}-duration">{m.date_duration()}</label>
 			<input
 				id="{id}-duration"
 				type="number"
@@ -225,7 +226,7 @@
 				value={durationMinutes}
 				onchange={onDurationChange}
 			/>
-			<span aria-hidden="true">min</span>
+			<span aria-hidden="true">{m.date_minutes_unit()}</span>
 		</div>
 	{/if}
 

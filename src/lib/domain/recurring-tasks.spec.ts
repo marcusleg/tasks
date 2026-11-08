@@ -22,6 +22,21 @@ describe('describeRecurrence', () => {
 	});
 });
 
+describe('describeRecurrence in German', () => {
+	it.each([
+		[{ frequency: 'daily' }, 'Wiederholt sich täglich'],
+		[{ frequency: 'weekly', weekdays: [1, 4] }, 'Wiederholt sich wöchentlich'],
+		[{ frequency: 'monthly', interval: 3 }, 'Wiederholt sich alle 3 Monate'],
+		[{ frequency: 'yearly' }, 'Wiederholt sich jährlich'],
+		[
+			{ frequency: 'daily', interval: 10, anchor: 'completion' },
+			'Wiederholt sich alle 10 Tage, gezählt ab Erledigung'
+		]
+	])('%j reads “%s”', (fields, label) => {
+		expect(describeRecurrence(rule(fields), { locale: 'de' })).toBe(label);
+	});
+});
+
 describe('isDetached', () => {
 	const current = {
 		title: 'Water plants',

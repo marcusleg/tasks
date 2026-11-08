@@ -55,6 +55,20 @@ describe('priorityGroup', () => {
 		]);
 	});
 
+	it('orders Titles the way the given locale does', () => {
+		const tasks = [task('Zebra'), task('Äpfel'), task('Birne')];
+		expect(priorityGroup(tasks, 'high', 'UTC', 'de').map((t) => t.title)).toEqual([
+			'Äpfel',
+			'Birne',
+			'Zebra'
+		]);
+		expect(priorityGroup(tasks, 'high', 'UTC', 'sv').map((t) => t.title)).toEqual([
+			'Birne',
+			'Zebra',
+			'Äpfel'
+		]);
+	});
+
 	it('keeps only open Tasks of the Priority', () => {
 		const result = priorityGroup(
 			[

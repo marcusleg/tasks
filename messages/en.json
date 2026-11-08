@@ -41,6 +41,30 @@
 	"confirm_delete_list_confirm": "Delete list",
 	"confirm_delete_list_message": "The list and all of its tasks will be deleted. This can’t be undone.",
 	"confirm_delete_list_title": "Delete “{name}”?",
+	"date_add_time": "Add time",
+	"date_clear": "Clear",
+	"date_clear_due": "Clear due date",
+	"date_clear_planned": "Clear planned date",
+	"date_date": "Date",
+	"date_due": "Due",
+	"date_due_title": "Due: {date}",
+	"date_duration": "Duration",
+	"date_duration_hours": "{hours} h",
+	"date_duration_minutes": "{minutes} min",
+	"date_field_due": "Due date",
+	"date_field_planned": "Planned date",
+	"date_minutes_unit": "min",
+	"date_overdue": "Overdue",
+	"date_overdue_title": "Overdue: {date}",
+	"date_planned_after_due": "The planned date is after the due date.",
+	"date_planned_label": "Planned:",
+	"date_planned_title": "Planned: {date}",
+	"date_planned_title_duration": "Planned: {date} ({duration})",
+	"date_remove_time": "Remove time",
+	"date_set_elsewhere": "Set in {zone}: {time} there",
+	"date_time": "Time",
+	"date_today": "Today",
+	"date_tomorrow": "Tomorrow",
 	"default_list_name": "My Tasks",
 	"error_page_back": "Back to your tasks",
 	"error_page_error_tab": "Error",
@@ -79,6 +103,107 @@
 	"priority_tasks_high": "High priority tasks",
 	"priority_tasks_low": "Low priority tasks",
 	"priority_tasks_medium": "Medium priority tasks",
+	"recurrence_after": "After",
+	"recurrence_after_completion": "Repeat after completion",
+	"recurrence_after_completion_note": "Count from when it’s completed, not from its date.",
+	"recurrence_daily": "Daily",
+	"recurrence_end_count": "After a number of times",
+	"recurrence_end_never": "Never",
+	"recurrence_end_until": "On a date",
+	"recurrence_ends": "Ends",
+	"recurrence_every": "Every",
+	"recurrence_hint_completed": "Reopen the task to change how it repeats.",
+	"recurrence_hint_needs_date": "Set a planned or due date to repeat this task.",
+	"recurrence_hint_parent_repeats": "The parent task repeats, so its subtasks can’t.",
+	"recurrence_hint_subtask_repeats": "A subtask repeats, so this task can’t.",
+	"recurrence_label": "Repeat",
+	"recurrence_last_date": "Last date",
+	"recurrence_last_day_note": "In shorter months, on the last day.",
+	"recurrence_monthly": "Monthly",
+	"recurrence_off": "Doesn’t repeat",
+	"recurrence_on_day": "On day",
+	"recurrence_on_these_days": "On these days",
+	"recurrence_summary_after_completion": "{summary} after completion",
+	"recurrence_summary_daily": "Repeats daily",
+	"recurrence_summary_every_days": "Repeats every {count} days",
+	"recurrence_summary_every_months": "Repeats every {count} months",
+	"recurrence_summary_every_weeks": "Repeats every {count} weeks",
+	"recurrence_summary_every_years": "Repeats every {count} years",
+	"recurrence_summary_monthly": "Repeats monthly",
+	"recurrence_summary_weekly": "Repeats weekly",
+	"recurrence_summary_yearly": "Repeats yearly",
+	"recurrence_times": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "time",
+				"countPlural=*": "times"
+			}
+		}
+	],
+	"recurrence_unit_days": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "day",
+				"countPlural=*": "days"
+			}
+		}
+	],
+	"recurrence_unit_months": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "month",
+				"countPlural=*": "months"
+			}
+		}
+	],
+	"recurrence_unit_weeks": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "week",
+				"countPlural=*": "weeks"
+			}
+		}
+	],
+	"recurrence_unit_years": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "year",
+				"countPlural=*": "years"
+			}
+		}
+	],
+	"recurrence_weekly": "Weekly",
+	"recurrence_yearly": "Yearly",
+	"recurrence_yearly_note": "On {date} each year.",
+	"scope_ask_again": "Ask again",
+	"scope_cancel": "Cancel",
+	"scope_delete_subtask": "Delete “{subtask}” from this occurrence of “{series}” only, or from all future occurrences too?",
+	"scope_delete_task": "Delete only this occurrence of “{series}”, so the next one takes its place, or this and all future occurrences?",
+	"scope_edit_subtask": "“{subtask}” is a subtask of “{series}”, which repeats. Change it in this occurrence only, or in this and all future occurrences?",
+	"scope_edit_task": "“{series}” repeats. Change only this occurrence, or this and all future occurrences?",
+	"scope_follows_dates": "Further date changes in this panel follow your choice.",
+	"scope_follows_details": "Further title, details and priority changes in this panel follow your choice.",
+	"scope_follows_subtasks": "Further subtask changes in this panel follow your choice.",
+	"scope_future": "This and all future",
+	"scope_note_dates_future": "Date changes apply to this and all future occurrences.",
+	"scope_note_dates_occurrence": "Date changes apply to this occurrence only.",
+	"scope_note_details_future": "Title, details and priority changes apply to this and all future occurrences.",
+	"scope_note_details_occurrence": "Title, details and priority changes apply to this occurrence only.",
+	"scope_note_subtasks_future": "Subtask changes apply to this and all future occurrences.",
+	"scope_note_subtasks_occurrence": "Subtask changes apply to this occurrence only.",
+	"scope_occurrence": "This occurrence",
+	"scope_title_delete": "Delete a repeating task",
+	"scope_title_edit": "Change a repeating task",
 	"settings_calendar_link_accessed_just_now": "just now",
 	"settings_calendar_link_all_lists": "All Lists",
 	"settings_calendar_link_all_lists_including_new": "All Lists (including ones created later)",

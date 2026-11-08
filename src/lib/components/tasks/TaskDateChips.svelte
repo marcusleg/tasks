@@ -11,6 +11,7 @@
 	import { parseRecurrence } from '#lib/domain/recurrence.js';
 	import { describeRecurrence } from '#lib/domain/recurring-tasks.js';
 	import type { SerializedTask } from '#lib/domain/tasks.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	/**
 	 * Compact Planned/Due chips for a Task row: calendar icon + "Today 09:00", flag icon +
@@ -31,7 +32,12 @@
 	function minutes(total: number): string {
 		const hours = Math.floor(total / 60);
 		const rest = total % 60;
-		return [hours && `${hours} h`, rest && `${rest} min`].filter(Boolean).join(' ');
+		return [
+			hours && m.date_duration_hours({ hours }),
+			rest && m.date_duration_minutes({ minutes: rest })
+		]
+			.filter(Boolean)
+			.join(' ');
 	}
 </script>
 
@@ -42,15 +48,18 @@
 			<span
 				class="chip"
 				class:today={isToday(planned, current)}
-				title="Planned: {full}{planned.kind === 'timed'
-					? ` (${minutes(planned.durationMinutes)})`
-					: ''}"
+				title={planned.kind === 'timed'
+					? m.date_planned_title_duration({
+							date: full,
+							duration: minutes(planned.durationMinutes)
+						})
+					: m.date_planned_title({ date: full })}
 			>
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<rect x="4" y="5.5" width="16" height="14.5" rx="2" />
 					<path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" />
 				</svg>
-				<span class="visually-hidden">Planned:</span>
+				<span class="visually-hidden">{m.date_planned_label()}</span>
 				{formatTaskDate(planned, current)}
 			</span>
 		{/if}
@@ -59,12 +68,14 @@
 				class="chip"
 				class:today={isToday(due, current)}
 				class:overdue
-				title="{overdue ? 'Overdue' : 'Due'}: {describeTaskDate(due, current)}"
+				title={overdue
+					? m.date_overdue_title({ date: describeTaskDate(due, current) })
+					: m.date_due_title({ date: describeTaskDate(due, current) })}
 			>
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<path d="M6 21V4M6 4.5h11l-2.5 4 2.5 4H6" />
 				</svg>
-				{overdue ? 'Overdue' : 'Due'}
+				{overdue ? m.date_overdue() : m.date_due()}
 				{formatTaskDate(due, current)}
 			</span>
 		{/if}

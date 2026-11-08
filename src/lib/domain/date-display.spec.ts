@@ -270,6 +270,44 @@ describe('formatTaskDate', () => {
 	});
 });
 
+describe('formatTaskDate in German', () => {
+	// Wednesday, 4 November 2026, midday in Berlin.
+	const german = (locale: string): Viewer => ({
+		...at('2026-11-04T11:00Z', 'Europe/Berlin'),
+		locale
+	});
+	const format = (value: TaskDate, locale = 'de') => formatTaskDate(value, german(locale));
+
+	it('names today, tomorrow and yesterday in German, capitalised', () => {
+		expect(format(dateOnly('2026-11-04'))).toBe('Heute');
+		expect(format(dateOnly('2026-11-05'))).toBe('Morgen');
+		expect(format(dateOnly('2026-11-03'))).toBe('Gestern');
+	});
+
+	it('writes weekdays, dates and times the German way', () => {
+		expect(format(dateOnly('2026-11-06'))).toMatch(/^Fr\.?$/);
+		expect(format(dateOnly('2026-11-11'))).toMatch(/^11\. Nov\.?$/);
+		expect(format(dateOnly('2027-01-03'))).toMatch(/^3\. Jan\.? 2027$/);
+		expect(format(timedPlannedDate('2026-11-05T14:00', 'Europe/Berlin'))).toBe('Morgen 14:00');
+	});
+
+	it('keeps the regional format of a regional locale', () => {
+		expect(format(timedPlannedDate('2026-11-05T14:00', 'Europe/Berlin'), 'de-AT')).toBe(
+			'Morgen 14:00'
+		);
+		expect(format(timedPlannedDate('2026-11-05T14:00', 'Europe/Berlin'), 'en-US')).toMatch(
+			/^Tomorrow 2:00\sPM$/
+		);
+	});
+
+	it('spells out the full date in German', () => {
+		expect(describeTaskDate(dateOnly('2026-07-17'), german('de'))).toBe('Freitag, 17. Juli 2026');
+		expect(describeTaskDate(timedDueDate('2026-07-15T09:00', 'Europe/Berlin'), german('de'))).toBe(
+			'Mittwoch, 15. Juli 2026 um 09:00'
+		);
+	});
+});
+
 describe('describeTaskDate', () => {
 	const viewer: Viewer = { ...at('2026-07-15T12:00Z', 'America/New_York'), locale: 'en-GB' };
 

@@ -10,6 +10,7 @@
 	} from '#lib/domain/dates.js';
 	import { isPlannedAfterDue } from '#lib/domain/date-display.js';
 	import type { SerializedTask } from '#lib/domain/tasks.js';
+	import { m } from '#lib/paraglide/messages.js';
 	import DateField from './DateField.svelte';
 
 	/**
@@ -53,7 +54,8 @@
 		{#key revision}
 			<DateField
 				kind="planned"
-				label="Planned date"
+				label={m.date_field_planned()}
+				clearLabel={m.date_clear_planned()}
 				value={task.planned}
 				{timeZone}
 				deferTyped={asksFirst}
@@ -61,7 +63,8 @@
 			/>
 			<DateField
 				kind="due"
-				label="Due date"
+				label={m.date_field_due()}
+				clearLabel={m.date_clear_due()}
 				value={task.due}
 				{timeZone}
 				deferTyped={asksFirst}
@@ -74,7 +77,7 @@
 					<path d="M12 3.5L2.5 20h19L12 3.5z" />
 					<path d="M12 10v4.5M12 17.25v.25" />
 				</svg>
-				The planned date is after the due date.
+				{m.date_planned_after_due()}
 			</p>
 		{/if}
 	</div>
