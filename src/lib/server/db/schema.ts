@@ -236,6 +236,12 @@ export const userPreferences = sqliteTable('user_preferences', {
 	userId: text('user_id')
 		.primaryKey()
 		.references(() => users.id, { onDelete: 'cascade' }),
+	/**
+	 * The User's chosen Language (CONTEXT.md → Language): `'automatic'` or a Language code such as
+	 * `'de'`. Plain text so the schema doesn't depend on which Languages exist; read through
+	 * `isLanguagePreference`, which treats anything unknown as Automatic.
+	 */
+	languagePreference: text('language_preference').notNull().default('automatic'),
 	createdAt: createdAt(),
 	updatedAt: updatedAt()
 });

@@ -1,0 +1,1 @@
+ALTER TABLE `user_preferences` ADD `language_preference` text DEFAULT 'automatic' NOT NULL;

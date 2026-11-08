@@ -32,6 +32,7 @@ type AuthEvent = Pick<
 export function authenticate(event: AuthEvent, db: Db, config: AuthConfig): void {
 	event.locals.user = null;
 	event.locals.session = null;
+	event.locals.languagePreference = 'automatic';
 
 	const token = event.cookies.get(sessionCookieName(config));
 	if (!token) return;
@@ -44,6 +45,7 @@ export function authenticate(event: AuthEvent, db: Db, config: AuthConfig): void
 
 	event.locals.user = result.user;
 	event.locals.session = result.session;
+	event.locals.languagePreference = result.languagePreference;
 	if (result.extended) {
 		setSessionCookie(event.cookies, config, token, result.session.expiresAt);
 	}
