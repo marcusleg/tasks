@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import type { Snippet } from 'svelte';
 	import { getTaskDrag } from '#lib/client/task-drag.svelte.js';
@@ -50,7 +51,7 @@
 			class="handle"
 			data-task-handle
 			disabled={!hydration.done}
-			aria-label="Move task"
+			aria-label={m.task_move_handle()}
 			aria-describedby="{titleId} task-move-hint"
 			onpointerdown={(event) => drag.start(event, task)}
 			onkeydown={(event) => drag.keydown(event, task)}

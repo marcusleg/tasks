@@ -18,6 +18,7 @@ import { newId, timestamp } from '#lib/domain/validation.js';
 import type { ListPort } from './list-port.js';
 import { OptimisticQueue } from './optimistic-queue.js';
 import type { Toasts } from './toasts.svelte.js';
+import { m } from '#lib/paraglide/messages.js';
 
 export class ListStore {
 	readonly #source: () => SerializedList[];
@@ -83,7 +84,7 @@ export class ListStore {
 		const name = patch.name === undefined ? undefined : parseListName(patch.name);
 		this.#replace({ ...current, ...patch, ...(name === undefined ? {} : { name }) });
 		return this.#queue.send(
-			'save the list',
+			m.toast_what_save_list(),
 			() => this.#port.updateList(id, patch),
 			({ list }) => this.#replace(list)
 		);
@@ -95,7 +96,7 @@ export class ListStore {
 		if (!current) return false;
 		this.#replace({ ...current, position: positionForMove(this.#lists, id, move) });
 		return this.#queue.send(
-			'move the list',
+			m.toast_what_move_list(),
 			() => this.#port.updateList(id, move),
 			({ list }) => this.#replace(list)
 		);
@@ -105,7 +106,7 @@ export class ListStore {
 	async remove(id: string): Promise<boolean> {
 		this.#lists = this.#lists.filter((list) => list.id !== id);
 		return this.#queue.send(
-			'delete the list',
+			m.toast_what_delete_list(),
 			() => this.#port.deleteList(id),
 			() => {}
 		);

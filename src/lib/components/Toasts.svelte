@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import type { Toasts } from '#lib/client/toasts.svelte.js';
 
 	let { toasts }: { toasts: Toasts } = $props();
@@ -55,12 +56,12 @@
 <svelte:window onkeydown={onWindowKeydown} />
 
 <!-- Always rendered, so screen readers pick up messages added to it. -->
-<div class="toasts" role="status" aria-live="polite" aria-label="Notifications">
+<div class="toasts" role="status" aria-live="polite" aria-label={m.toast_notifications()}>
 	{#each toasts.items as toast (toast.id)}
 		<div
 			class="toast"
 			role="group"
-			aria-label="Notification"
+			aria-label={m.toast_notification()}
 			onmouseenter={() => toasts.pause(toast.id, 'hover')}
 			onmouseleave={() => toasts.resume(toast.id, 'hover')}
 			onfocusin={(event) => onFocusIn(event, toast.id)}
@@ -80,7 +81,7 @@
 			<button
 				type="button"
 				class="dismiss"
-				aria-label="Dismiss"
+				aria-label={m.toast_dismiss()}
 				onclick={() => toasts.dismiss(toast.id)}
 			>
 				<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">

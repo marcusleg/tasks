@@ -12,7 +12,8 @@
  * The rules come from `#lib/domain/moves` (through the `TaskStore`) and `dropMove`.
  */
 import { getContext, setContext, tick } from 'svelte';
-import type { TaskMove, Step } from '#lib/domain/moves.js';
+import type { MoveProblem, TaskMove, Step } from '#lib/domain/moves.js';
+import { m } from '#lib/paraglide/messages.js';
 import type { SerializedTask } from '#lib/domain/tasks.js';
 import type { ListStore } from './lists.svelte.js';
 import { dropIndex, dropMove, type Depth, type Row } from './reorder.js';
@@ -142,7 +143,7 @@ export class TaskDrag {
 		if (!started) return;
 		if (!target) return;
 		if (invalid) {
-			this.announcement = `Can’t move ${title} there: ${invalid}`;
+			this.announcement = m.task_drag_cannot_move_there({ title, reason: invalid });
 			return;
 		}
 		void this.#move(id, target.move, title);
@@ -159,7 +160,7 @@ export class TaskDrag {
 		event.stopPropagation();
 		const started = this.#press.started;
 		this.#end();
-		if (started) this.announcement = 'Move cancelled';
+		if (started) this.announcement = m.task_drag_cancelled();
 	};
 
 	#end(): void {
@@ -196,7 +197,7 @@ export class TaskDrag {
 		}
 		if (list.sortMode !== 'custom') {
 			this.#target = { listId: list.id, move: { listId: list.id, parentId: null }, depth: 0 };
-			this.active = { ...base, indicator: null, invalid: 'that list isn’t in Custom Order' };
+			this.active = { ...base, indicator: null, invalid: m.task_drag_reason_not_custom_order() };
 			return;
 		}
 
@@ -214,7 +215,7 @@ export class TaskDrag {
 		const threshold = task.parentId === null ? indent * 0.75 : indent * 0.25;
 		const wanted: Depth = offset > threshold ? 1 : 0;
 		const { depth, move } = dropMove(list.id, rows, slot, wanted);
-		const problem = this.#tasks.moveError(task.id, move);
+		const problem = this.#tasks.moveProblem(task.id, move);
 		this.#target = { listId: list.id, move, depth };
 
 		let top: number;
@@ -230,7 +231,7 @@ export class TaskDrag {
 		this.active = {
 			...base,
 			indicator: { top, left, width: areaRect.right - left },
-			invalid: problem && lowerFirst(problem)
+			invalid: problem && moveProblemText(problem)
 		};
 	}
 
@@ -323,9 +324,12 @@ export class TaskDrag {
 			this.announcement = nowhere(task, step);
 			return;
 		}
-		const problem = this.#tasks.moveError(task.id, move);
+		const problem = this.#tasks.moveProblem(task.id, move);
 		if (problem) {
-			this.announcement = `Can’t move ${task.title}: ${lowerFirst(problem)}`;
+			this.announcement = m.task_drag_cannot_move({
+				title: task.title,
+				reason: moveProblemText(problem)
+			});
 			return;
 		}
 		void this.#move(task.id, move, task.title, true);
@@ -347,36 +351,75 @@ export class TaskDrag {
 	/** Where a Task is now, in words. */
 	#describe(id: string, title: string): string {
 		const task = this.#tasks.get(id);
-		if (!task) return `${title} moved`;
-		const listName = this.#lists.get(task.listId)?.name ?? 'the list';
+		if (!task) return m.task_drag_moved({ title });
+		const listName = this.#lists.get(task.listId)?.name ?? m.task_drag_list_fallback();
 		if (task.parentId) {
 			const parent = this.#tasks.get(task.parentId);
 			const siblings = this.#tasks.subtasks(task.parentId).filter((t) => !t.completedAt);
 			const index = siblings.findIndex((t) => t.id === id);
-			return `${title} is now subtask ${index + 1} of ${siblings.length} under ${parent?.title ?? 'its parent'}`;
+			return m.task_drag_new_subtask({
+				title,
+				position: index + 1,
+				count: siblings.length,
+				parent: parent?.title ?? m.task_drag_parent_fallback()
+			});
 		}
 		const siblings = this.#tasks.openTasks(task.listId);
 		const index = siblings.findIndex((t) => t.id === id);
-		return `${title} moved to position ${index + 1} of ${siblings.length} in ${listName}`;
+		return m.task_drag_moved_to_position({
+			title,
+			position: index + 1,
+			count: siblings.length,
+			list: listName
+		});
 	}
 }
 
-function lowerFirst(text: string): string {
-	return text.charAt(0).toLowerCase() + text.slice(1);
+/** Why a move isn't allowed, worded to follow "Can’t move … there:". */
+function moveProblemText(problem: MoveProblem): string {
+	switch (problem) {
+		case 'parent-is-subtask':
+			return m.task_move_problem_parent_is_subtask();
+		case 'own-subtask':
+			return m.task_move_problem_own_subtask();
+		case 'has-subtasks':
+			return m.task_move_problem_has_subtasks();
+		case 'parent-completed':
+			return m.task_move_problem_parent_completed();
+		case 'parent-repeats':
+			return m.task_move_problem_parent_repeats();
+		case 'subtask-repeats':
+			return m.task_move_problem_subtask_repeats();
+		case 'unknown-task':
+			return m.task_move_problem_unknown_task();
+		case 'completed':
+			return m.task_move_problem_completed();
+		case 'unknown-parent':
+			return m.task_move_problem_unknown_parent();
+		case 'parent-in-other-list':
+			return m.task_move_problem_parent_in_other_list();
+		case 'before-and-after':
+			return m.task_move_problem_before_and_after();
+		case 'next-to-itself':
+			return m.task_move_problem_next_to_itself();
+		case 'unknown-neighbour':
+			return m.task_move_problem_unknown_neighbour();
+	}
 }
 
 function nowhere(task: SerializedTask, step: Step): string {
+	const title = task.title;
 	switch (step) {
 		case 'up':
-			return `${task.title} is already at the top`;
+			return m.task_drag_already_top({ title });
 		case 'down':
-			return `${task.title} is already at the bottom`;
+			return m.task_drag_already_bottom({ title });
 		case 'indent':
 			return task.parentId
-				? `${task.title} is already a subtask`
-				: `${task.title} has no task above it to become a subtask of`;
+				? m.task_drag_already_subtask({ title })
+				: m.task_drag_no_parent_above({ title });
 		case 'outdent':
-			return `${task.title} isn’t a subtask`;
+			return m.task_drag_not_subtask({ title });
 	}
 }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import { onMount, tick } from 'svelte';
 	import { startClock, viewerTimeZone } from '#lib/client/clock.svelte.js';
 	import { CollapsedSubtasks } from '#lib/client/collapsed-subtasks.svelte.js';
@@ -47,12 +48,19 @@
 			timeZone
 		);
 
-	const SORT_LABELS: Record<SortMode, string> = {
-		custom: 'Custom Order',
-		planned: 'Planned Date',
-		due: 'Due Date',
-		priority: 'Priority',
-		title: 'Title'
+	const sortLabel = (mode: SortMode): string => {
+		switch (mode) {
+			case 'custom':
+				return m.sort_custom();
+			case 'planned':
+				return m.sort_planned();
+			case 'due':
+				return m.sort_due();
+			case 'priority':
+				return m.sort_priority();
+			case 'title':
+				return m.sort_title();
+		}
 	};
 
 	// Drag-and-drop (#11) only rearranges Custom Order, so only while the List shows it.
@@ -100,13 +108,12 @@
 	}
 
 	const completedCount = $derived(tasks.completedCount(list.id));
-	const completedNoun = $derived(completedCount === 1 ? 'task' : 'tasks');
 </script>
 
 <Column labelledBy="{id}-name">
 	{#snippet header()}
 		{#if renaming}
-			<label class="visually-hidden" for="{id}-rename">List name</label>
+			<label class="visually-hidden" for="{id}-rename">{m.list_name_label()}</label>
 			<input
 				bind:this={nameInput}
 				id="{id}-rename"
@@ -122,26 +129,28 @@
 			<div class="name">
 				<h2 id="{id}-name">{list.name}</h2>
 				{#if list.sortMode !== 'custom'}
-					<p class="sorted-by" data-sort-indicator>Sorted by {SORT_LABELS[list.sortMode]}</p>
+					<p class="sorted-by" data-sort-indicator>
+						{m.list_sorted_by({ mode: sortLabel(list.sortMode) })}
+					</p>
 				{/if}
 			</div>
 		{/if}
 		<ListMenu
-			label="List options"
+			label={m.list_options()}
 			sort={{
-				label: 'Sort by',
+				label: m.list_sort_by(),
 				value: list.sortMode,
-				options: SORT_MODES.map((mode) => ({ value: mode, label: SORT_LABELS[mode] })),
+				options: SORT_MODES.map((mode) => ({ value: mode, label: sortLabel(mode) })),
 				onSelect: (mode) => void lists.update(list.id, { sortMode: mode as SortMode })
 			}}
 			actions={[
-				{ label: 'Rename list', onSelect: startRename },
+				{ label: m.list_rename(), onSelect: startRename },
 				{
-					label: 'Delete all completed',
+					label: m.list_delete_completed(),
 					onSelect: () => (confirmDeleteCompleted = true),
 					disabled: completedCount === 0
 				},
-				{ label: 'Delete list', onSelect: () => (confirmDeleteList = true), danger: true }
+				{ label: m.list_delete(), onSelect: () => (confirmDeleteList = true), danger: true }
 			]}
 		/>
 	{/snippet}
@@ -149,7 +158,7 @@
 	<AddTaskRow listId={list.id} />
 
 	{#if open.length > 0}
-		<ul class="tasks" aria-label="Open tasks" data-open-tasks>
+		<ul class="tasks" aria-label={m.list_open_tasks()} data-open-tasks>
 			{#each open as task (task.id)}
 				{@const subtasks = openSubtasks(task.id)}
 				{#if subtasks.length > 0}
@@ -160,10 +169,10 @@
 							<button
 								type="button"
 								class="subtask-toggle"
-								aria-label="Subtasks of {task.title}"
+								aria-label={m.subtask_list_label({ title: task.title })}
 								aria-expanded={expanded}
 								aria-controls="{id}-subtasks-{task.id}"
-								title="{all - subtasks.length} of {all} subtasks completed"
+								title={m.subtask_progress({ done: all - subtasks.length, total: all })}
 								onclick={() => collapsed.toggle(task.id)}
 							>
 								<span aria-hidden="true">{all - subtasks.length}/{all}</span>
@@ -184,7 +193,7 @@
 						<ul
 							id="{id}-subtasks-{task.id}"
 							class="subtasks"
-							aria-label="Subtasks of {task.title}"
+							aria-label={m.subtask_list_label({ title: task.title })}
 							data-subtasks-of={task.id}
 						>
 							{#each subtasks as subtask (subtask.id)}
@@ -199,7 +208,7 @@
 		</ul>
 	{:else}
 		<p class="empty" data-drop-empty>
-			{completedCount > 0 ? 'All tasks completed' : 'No tasks yet'}
+			{completedCount > 0 ? m.list_all_completed() : m.list_no_tasks()}
 		</p>
 	{/if}
 
@@ -216,15 +225,15 @@
 						stroke-linejoin="round"
 					/>
 				</svg>
-				Completed ({completedCount})
+				{m.list_completed_heading({ count: completedCount })}
 			</summary>
-			<ul class="tasks" aria-label="Completed tasks">
+			<ul class="tasks" aria-label={m.list_completed_tasks()}>
 				{#each completed as { parent, subtasks } (parent.id)}
 					{#if parent.completedAt}
 						<TaskRow task={parent} />
 						{#if subtasks.length > 0}
 							<li class="subtask-group">
-								<ul class="subtasks" aria-label="Subtasks of {parent.title}">
+								<ul class="subtasks" aria-label={m.subtask_list_label({ title: parent.title })}>
 									{#each subtasks as subtask (subtask.id)}
 										<TaskRow task={subtask} />
 									{/each}
@@ -250,17 +259,17 @@
 
 <ConfirmDialog
 	bind:open={confirmDeleteList}
-	title="Delete “{list.name}”?"
-	message="The list and all of its tasks will be deleted. This can’t be undone."
-	confirmLabel="Delete list"
+	title={m.confirm_delete_list_title({ name: list.name })}
+	message={m.confirm_delete_list_message()}
+	confirmLabel={m.confirm_delete_list_confirm()}
 	onConfirm={deleteList}
 />
 
 <ConfirmDialog
 	bind:open={confirmDeleteCompleted}
-	title="Delete all completed tasks?"
-	message="{completedCount} completed {completedNoun} in “{list.name}” will be deleted. This can’t be undone."
-	confirmLabel="Delete"
+	title={m.confirm_delete_completed_title()}
+	message={m.confirm_delete_completed_message({ count: completedCount, name: list.name })}
+	confirmLabel={m.confirm_delete()}
 	onConfirm={() => tasks.deleteCompleted(list.id)}
 />
 

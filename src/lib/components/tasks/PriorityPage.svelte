@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { onDestroy, tick } from 'svelte';
 	import { viewerTimeZone } from '#lib/client/clock.svelte.js';
@@ -10,7 +11,7 @@
 	import { priorityGroup } from '#lib/domain/priority-view.js';
 	import { PRIORITIES, type Priority, type SerializedTask } from '#lib/domain/tasks.js';
 	import Column from './Column.svelte';
-	import { PRIORITY_LABELS } from './priority.js';
+	import { priorityEmptyText, priorityLabel, priorityTasksLabel } from './priority.js';
 	import PriorityMarker from './PriorityMarker.svelte';
 	import TaskDetail from './TaskDetail.svelte';
 	import TaskRow from './TaskRow.svelte';
@@ -53,14 +54,14 @@
 </script>
 
 <svelte:head>
-	<title>Priority · Tasks</title>
+	<title>{m.priority_label()} · Tasks</title>
 </svelte:head>
 
 <div class="switcher">
-	<label class="visually-hidden" for="{id}-switcher">Priority</label>
+	<label class="visually-hidden" for="{id}-switcher">{m.priority_label()}</label>
 	<select id="{id}-switcher" bind:value={shown} disabled={!hydration.done}>
 		{#each PRIORITIES as priority (priority)}
-			<option value={priority}>{PRIORITY_LABELS[priority]}</option>
+			<option value={priority}>{priorityLabel(priority)}</option>
 		{/each}
 	</select>
 </div>
@@ -71,12 +72,12 @@
 			<Column labelledBy="{id}-{group.priority}">
 				{#snippet header()}
 					<PriorityMarker priority={group.priority} />
-					<h2 id="{id}-{group.priority}" class="name">{PRIORITY_LABELS[group.priority]}</h2>
+					<h2 id="{id}-{group.priority}" class="name">{priorityLabel(group.priority)}</h2>
 					<span class="count">{group.tasks.length}</span>
 				{/snippet}
 
 				{#if group.tasks.length > 0}
-					<ul class="tasks" aria-label="{PRIORITY_LABELS[group.priority]} priority tasks">
+					<ul class="tasks" aria-label={priorityTasksLabel(group.priority)}>
 						{#each group.tasks as task (task.id)}
 							<TaskRow {task}>
 								{#snippet meta(item)}
@@ -91,7 +92,7 @@
 						{/each}
 					</ul>
 				{:else}
-					<p class="empty">No {group.priority}-priority tasks</p>
+					<p class="empty">{priorityEmptyText(group.priority)}</p>
 				{/if}
 			</Column>
 		</div>

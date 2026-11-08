@@ -4,8 +4,12 @@
  * another one, promoting a Subtask, and moving a Task (with its Subtasks) to another List.
  */
 import { generateKeyBetween } from 'fractional-indexing';
-import { RECURRENCE_CONFLICT_MESSAGES, recurrenceConflict } from './recurring-tasks';
-import { nestingError } from './subtasks';
+import {
+	RECURRENCE_CONFLICT_MESSAGES,
+	recurrenceConflict,
+	type RecurrenceConflict
+} from './recurring-tasks';
+import { NESTING_MESSAGES, nestingProblem, type NestingProblem } from './subtasks';
 import { byCustomOrder } from './tasks';
 import { InvalidInputError } from './validation';
 
@@ -44,31 +48,63 @@ export interface MoveChange {
  * and the Tasks of the target List.
  */
 export function moveError(tasks: readonly Movable[], id: string, move: TaskMove): string | null {
+	const problem = moveProblem(tasks, id, move);
+	return problem && MOVE_MESSAGES[problem];
+}
+
+/** Why a move isn't allowed (see {@link moveProblem}). */
+export type MoveProblem =
+	| NestingProblem
+	| RecurrenceConflict
+	| 'unknown-task'
+	| 'completed'
+	| 'unknown-parent'
+	| 'parent-in-other-list'
+	| 'before-and-after'
+	| 'next-to-itself'
+	| 'unknown-neighbour';
+
+export const MOVE_MESSAGES: Record<MoveProblem, string> = {
+	...NESTING_MESSAGES,
+	...RECURRENCE_CONFLICT_MESSAGES,
+	'unknown-task': 'Unknown Task',
+	completed: 'A Completed Task can’t be moved; reopen it first',
+	'unknown-parent': 'Unknown parent Task',
+	'parent-in-other-list': 'A Subtask must be in the same List as its parent',
+	'before-and-after': 'Give before or after, not both',
+	'next-to-itself': 'A Task can’t be moved next to itself',
+	'unknown-neighbour': 'Unknown neighbour'
+};
+
+/** Like {@link moveError}, as a code the browser can word in the User's Language. */
+export function moveProblem(
+	tasks: readonly Movable[],
+	id: string,
+	move: TaskMove
+): MoveProblem | null {
 	const task = tasks.find((t) => t.id === id);
-	if (!task) return 'Unknown Task';
-	if (task.completedAt) return 'A Completed Task can’t be moved; reopen it first';
+	if (!task) return 'unknown-task';
+	if (task.completedAt) return 'completed';
 	if (move.parentId !== null) {
 		const parent = tasks.find((t) => t.id === move.parentId);
-		if (!parent) return 'Unknown parent Task';
-		if (parent.listId !== move.listId) return 'A Subtask must be in the same List as its parent';
+		if (!parent) return 'unknown-parent';
+		if (parent.listId !== move.listId) return 'parent-in-other-list';
 		const hasSubtasks = tasks.some((t) => t.parentId === id);
-		const problem = nestingError(parent, { id, hasSubtasks });
+		const problem = nestingProblem(parent, { id, hasSubtasks });
 		if (problem) return problem;
 		// The same exclusivity rule as setting a Recurrence (`recurrenceConflict`).
 		if (task.recurrence) {
 			const conflict = recurrenceConflict({ ...task, parentId: move.parentId }, tasks);
-			if (conflict) return RECURRENCE_CONFLICT_MESSAGES[conflict];
+			if (conflict) return conflict;
 		}
 	}
-	if (move.before !== undefined && move.after !== undefined) {
-		return 'Give before or after, not both';
-	}
+	if (move.before !== undefined && move.after !== undefined) return 'before-and-after';
 	const neighbourId = move.before ?? move.after;
 	if (neighbourId !== undefined) {
-		if (neighbourId === id) return 'A Task can’t be moved next to itself';
+		if (neighbourId === id) return 'next-to-itself';
 		const neighbour = tasks.find((t) => t.id === neighbourId);
 		if (!neighbour || neighbour.listId !== move.listId || neighbour.parentId !== move.parentId) {
-			return 'Unknown neighbour';
+			return 'unknown-neighbour';
 		}
 	}
 	return null;

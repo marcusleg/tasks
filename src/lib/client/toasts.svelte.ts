@@ -7,6 +7,7 @@
  * it, and the replaced action is then final.
  */
 import { getContext, setContext } from 'svelte';
+import { m } from '#lib/paraglide/messages.js';
 
 export interface ToastAction {
 	/** The button's text, e.g. "Undo". */
@@ -65,14 +66,14 @@ export class Toasts {
 
 	/** Shows a message with an "Undo" button that calls `undo`. Returns the toast's id. */
 	undoable(message: string, undo: () => void): number {
-		return this.show(message, { label: 'Undo', run: undo });
+		return this.show(message, { label: m.toast_undo(), run: undo });
 	}
 
-	/** Reports a failed request; `what` completes "Couldn't …", e.g. "add the task". */
+	/** Reports a failed request; `what` names the action in the User's Language, e.g. "add the task". */
 	failed(what: string, cause: unknown): void {
 		console.error(`Couldn't ${what}`, cause);
 		const detail = cause instanceof Error && cause.message ? ` ${cause.message}.` : '';
-		this.show(`Couldn't ${what}.${detail}`);
+		this.show(`${m.toast_failed({ what })}${detail}`);
 	}
 
 	/** The toast with an action button, if one is showing. */
