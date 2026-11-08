@@ -36,7 +36,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@inlang/paraglide-js": "^3.2.1",
+		"@inlang/paraglide-js": "^3.1.0",
 		"@inlang/plugin-message-format": "^4.6.0",
 		"@playwright/test": "^1.64.1",
 		"@sveltejs/adapter-node": "^6.0.1",

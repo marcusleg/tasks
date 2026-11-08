@@ -3,22 +3,14 @@ import { getAuthConfig } from '#lib/server/auth/config.js';
 import { setLoginFlowCookie } from '#lib/server/auth/login-flow.js';
 import { describeError, startLogin } from '#lib/server/auth/oidc.js';
 import { sanitizeReturnTo } from '#lib/server/auth/return-to.js';
+import { parseLoginError, type LoginError } from './login-error';
 import type { Actions, PageServerLoad } from './$types';
-
-/** Why signing in didn't work, as `?error=` from the callback; the page words it. */
-const ERRORS = ['expired', 'failed', 'denied', 'provider'] as const;
-export type LoginError = (typeof ERRORS)[number] | 'unreachable';
-
-function loginError(value: string | null): LoginError | null {
-	if (value === null) return null;
-	return ERRORS.find((error) => error === value) ?? 'failed';
-}
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) redirect(303, sanitizeReturnTo(url.searchParams.get('returnTo')));
 
 	return {
-		error: loginError(url.searchParams.get('error')),
+		error: parseLoginError(url.searchParams.get('error')),
 		signedOut: url.searchParams.has('signedOut')
 	};
 };

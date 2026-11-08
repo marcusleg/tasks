@@ -66,6 +66,33 @@ test.describe('a German browser', () => {
 	});
 });
 
+for (const [locale, expired, failed] of [
+	[
+		'en-US',
+		'Your sign-in attempt expired. Please try again.',
+		'Signing in failed. Please try again.'
+	],
+	[
+		'de-DE',
+		'Der Anmeldeversuch ist abgelaufen. Bitte noch einmal versuchen.',
+		'Die Anmeldung ist fehlgeschlagen. Bitte noch einmal versuchen.'
+	]
+]) {
+	test.describe(`the login page in ${locale}`, () => {
+		test.use({ locale });
+
+		test('words the error the callback sent back, and an unknown one as a failure', async ({
+			page
+		}) => {
+			await page.goto('/auth/login?error=expired');
+			await expect(page.getByRole('alert')).toHaveText(expired);
+
+			await page.goto('/auth/login?error=nonsense');
+			await expect(page.getByRole('alert')).toHaveText(failed);
+		});
+	});
+}
+
 test('a browser asking for a language the app does not speak gets English', async ({ request }) => {
 	const response = await request.get('/auth/login', {
 		headers: { 'accept-language': 'fr-FR,fr;q=0.9' }

@@ -81,20 +81,27 @@ export function withLanguage<T>(language: Language, fn: () => T): T {
 }
 
 /**
+ * Calendar Links (`/cal/…`) are fetched by a calendar app, whose `Accept-Language` says nothing
+ * about the owner (ADR 0005). They are English unless the feed passes its owner's Language itself.
+ */
+function isCalendarFeed(pathname: string): boolean {
+	return pathname === '/cal' || pathname.startsWith('/cal/');
+}
+
+/**
  * The `handle` hook that gives each request its Language: sets `locals.language` and
  * `locals.dateLocale`, renders the page in it, and fills in `<html lang="%lang%">`.
  *
  * `preference` is the User's stored choice. It runs after the auth hook, so `locals.user` is set
- * when someone is signed in.
+ * when someone is signed in. Calendar Links skip all of this and get English.
  */
 export function createLanguageHandle(deps: {
 	preference: (event: RequestEvent) => LanguagePreference | Promise<LanguagePreference>;
 }): Handle {
 	return async ({ event, resolve }) => {
-		const { language, dateLocale } = resolveLanguage(
-			event.request.headers.get('accept-language'),
-			await deps.preference(event)
-		);
+		const { language, dateLocale }: ResolvedLanguage = isCalendarFeed(event.url.pathname)
+			? { language: BASE_LANGUAGE, dateLocale: BASE_LANGUAGE }
+			: resolveLanguage(event.request.headers.get('accept-language'), await deps.preference(event));
 		event.locals.language = language;
 		event.locals.dateLocale = dateLocale;
 

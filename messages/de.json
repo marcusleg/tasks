@@ -7,7 +7,7 @@
 	"auth_login_error_unreachable": "Der Identitätsanbieter ist nicht erreichbar. Bitte gleich noch einmal versuchen.",
 	"auth_login_signed_out": "Du wurdest abgemeldet.",
 	"auth_not_allowed_back": "Zurück zur Anmeldung",
-	"auth_not_allowed_text": "Dein Konto gehört nicht zur Gruppe, die diese App nutzen darf, deshalb ist keine Anmeldung möglich. Bitte die Administration, dich zur Gruppe hinzuzufügen, oder melde dich mit einem anderen Konto an.",
+	"auth_not_allowed_text": "Dein Konto gehört nicht zur Gruppe, die diese App nutzen darf, deshalb ist keine Anmeldung möglich. Frag die Administration, ob sie dich zur Gruppe hinzufügt, oder melde dich mit einem anderen Konto an.",
 	"auth_not_allowed_title": "Kein Zugriff",
 	"auth_sign_in": "Anmelden",
 	"error_page_back": "Zurück zu deinen Aufgaben",

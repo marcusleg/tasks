@@ -1,17 +1,9 @@
 <script lang="ts">
 	import { m } from '#lib/paraglide/messages.js';
-	import type { LoginError } from './+page.server';
+	import { loginErrorMessage } from './login-error';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
-
-	const ERRORS: Record<LoginError, () => string> = {
-		expired: m.auth_login_error_expired,
-		failed: m.auth_login_error_failed,
-		denied: m.auth_login_error_denied,
-		provider: m.auth_login_error_provider,
-		unreachable: m.auth_login_error_unreachable
-	};
 
 	let error = $derived(form?.error ?? data.error);
 </script>
@@ -24,7 +16,7 @@
 	<h1>Tasks</h1>
 
 	{#if error}
-		<p class="message error" role="alert">{ERRORS[error]()}</p>
+		<p class="message error" role="alert">{loginErrorMessage(error)}</p>
 	{:else if data.signedOut}
 		<p class="message" role="status">{m.auth_login_signed_out()}</p>
 	{/if}

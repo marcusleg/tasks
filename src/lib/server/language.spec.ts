@@ -71,10 +71,13 @@ describe('withLanguage', () => {
 describe('language handle', () => {
 	async function request(
 		headers: Record<string, string>,
-		preference: () => LanguagePreference | Promise<LanguagePreference> = () => 'automatic'
+		preference: () => LanguagePreference | Promise<LanguagePreference> = () => 'automatic',
+		path = '/'
 	) {
+		const url = new URL(path, 'http://localhost');
 		const event = {
-			request: new Request('http://localhost/', { headers }),
+			url,
+			request: new Request(url, { headers }),
 			locals: {} as App.Locals
 		} as RequestEvent;
 		let rendered: { locale: string; message: string; html?: string } | undefined;
@@ -127,6 +130,24 @@ describe('language handle', () => {
 
 		expect(locals).toMatchObject({ language: 'de', dateLocale: 'de' });
 		expect(rendered.message).toBe('Abmelden');
+	});
+
+	it('leaves Calendar Links in English, whatever the calendar app asks for', async () => {
+		for (const path of ['/cal/some-token.ics', '/cal']) {
+			const { locals, rendered } = await request(
+				{ 'accept-language': 'de-DE,de;q=0.9' },
+				() => 'de',
+				path
+			);
+
+			expect(locals).toMatchObject({ language: 'en', dateLocale: 'en' });
+			expect(rendered).toMatchObject({ locale: 'en', message: 'Sign out' });
+		}
+	});
+
+	it('only skips /cal itself, not paths that merely start with it', async () => {
+		const { locals } = await request({ 'accept-language': 'de' }, undefined, '/calendar');
+		expect(locals.language).toBe('de');
 	});
 
 	it('keeps concurrent requests apart', async () => {
