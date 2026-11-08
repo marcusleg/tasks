@@ -16,6 +16,7 @@
 	import { onMount } from 'svelte';
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { page } from '$app/state';
+	import { m } from '#lib/paraglide/messages.js';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
@@ -43,7 +44,7 @@
 		{/snippet}
 		{#snippet userActions()}
 			<form method="POST" action="/auth/logout" class="sign-out-form">
-				<button type="submit" class="sign-out">Sign out</button>
+				<button type="submit" class="sign-out">{m.shell_sign_out()}</button>
 			</form>
 		{/snippet}
 		{@render children()}

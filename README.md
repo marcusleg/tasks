@@ -38,19 +38,20 @@ E2E tests sign in through the mock provider with `loginAs(page, { sub, name, ema
 
 ### Scripts
 
-| Script                | What it does                                                                                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `npm run dev`         | Start the Vite dev server.                                                                                                                             |
-| `npm run build`       | Build the production server into `build/`.                                                                                                             |
-| `npm start`           | Run the production build (`node build`).                                                                                                               |
-| `npm test`            | Run the unit tests (Vitest) once. `npm run test:watch` keeps them running.                                                                             |
-| `npm run test:e2e`    | Build the app, start it on port 4173 (`E2E_PORT`) with a throwaway database and the mock OIDC provider on port 4185 (`E2E_OIDC_PORT`), run Playwright. |
-| `npm run oidc:mock`   | Start the mock OIDC provider for local development.                                                                                                    |
-| `npm run lint`        | Check formatting (Prettier) and lint (ESLint).                                                                                                         |
-| `npm run format`      | Format everything with Prettier.                                                                                                                       |
-| `npm run check`       | Type-check with `svelte-check`.                                                                                                                        |
-| `npm run db:generate` | Generate a new migration in `drizzle/` from `src/lib/server/db/schema.ts`.                                                                             |
-| `npm run db:studio`   | Open Drizzle Studio against the local database.                                                                                                        |
+| Script                 | What it does                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run dev`          | Start the Vite dev server.                                                                                                                             |
+| `npm run build`        | Build the production server into `build/`.                                                                                                             |
+| `npm start`            | Run the production build (`node build`).                                                                                                               |
+| `npm test`             | Run the unit tests (Vitest) once. `npm run test:watch` keeps them running.                                                                             |
+| `npm run test:e2e`     | Build the app, start it on port 4173 (`E2E_PORT`) with a throwaway database and the mock OIDC provider on port 4185 (`E2E_OIDC_PORT`), run Playwright. |
+| `npm run oidc:mock`    | Start the mock OIDC provider for local development.                                                                                                    |
+| `npm run lint`         | Check formatting (Prettier) and lint (ESLint).                                                                                                         |
+| `npm run format`       | Format everything with Prettier.                                                                                                                       |
+| `npm run check`        | Compile the messages (`npm run i18n:compile`), then type-check with `svelte-check`.                                                                    |
+| `npm run i18n:compile` | Compile `messages/` into `src/lib/paraglide/`. Dev, build and tests do it themselves, through the Vite plugin.                                         |
+| `npm run db:generate`  | Generate a new migration in `drizzle/` from `src/lib/server/db/schema.ts`.                                                                             |
+| `npm run db:studio`    | Open Drizzle Studio against the local database.                                                                                                        |
 
 ### Data access: always scope by User
 
@@ -70,6 +71,40 @@ Data-access functions take a `UserScope` (never a bare `Db`) and filter by `scop
 ### Reading and changing data
 
 Pages load their data in `load` functions; changes go through the JSON endpoints under `src/routes/api/`, called via `api` in `src/lib/client/api.ts` (see [ADR 0003](docs/adr/0003-json-endpoints-for-mutations.md)). Components don't call `api` directly: they use the page's `TaskStore` and the layout's `ListStore` (`getTaskStore()` / `getListStore()`), which update the screen optimistically. The open Task detail panel is part of the URL (`?task=<id>`), so `/lists/<listId>?task=<taskId>` links straight to a Task. `/` shows the User's visible Lists as columns (one List at a time, with a switcher, below 768px: the List last viewed on this device); `/lists/<listId>` is the same view focused on that List, even if it is hidden. Lists are shown, hidden and reordered in the sidebar (`PATCH /api/lists/[id]` with `visible`, or `before`/`after` another List's id). Tasks are rearranged in Custom Order by dragging their handle (or Arrow keys on the focused handle), and moved between Lists by dragging across columns or with "List" in the detail panel; all of it goes through `POST /api/tasks/[id]/move` with `{ listId, parentId, before?, after? }`, whose rules live in `src/lib/domain/moves.ts`. Drag-and-drop is offered only while a List's Sort Mode is Custom Order. Completing a Task, deleting one, and moving one to another List show a toast with Undo (also Ctrl/Cmd+Z outside text fields) that restores the exact previous state: Undo complete, Undo move (to another List) and Undo delete (of a Subtask, a Task, or a skipped Occurrence) send the `undo` from the `POST /api/tasks/[id]/complete`, `POST /api/tasks/[id]/move` or `DELETE /api/tasks/[id]` answer to `POST /api/undo` (see [ADR 0004](docs/adr/0004-undo-with-before-state-on-the-server.md)); Reopen from the Completed section is not an Undo.
+
+### Translations
+
+The UI speaks English and German (`CONTEXT.md` → Language, [ADR 0005](docs/adr/0005-language-is-a-user-preference-not-a-url.md)). Messages live in one file per Language, `messages/en.json` (English, the source) and `messages/de.json`; `project.inlang/settings.json` lists the Languages, so a third one is one more file and one entry there. [Paraglide JS](https://paraglidejs.com) compiles them into typed functions in `src/lib/paraglide/`, which is not committed and is regenerated by every build, `npm test` and `npm run check`.
+
+**Adding a message**: add the key to every file in `messages/`, keeping the keys sorted, then use it:
+
+```svelte
+<script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
+</script>
+
+<button aria-label={m.shell_sidebar_show_list({ name: list.name })}>{m.shell_sign_out()}</button>
+```
+
+Keys are `snake_case` and start with their area's prefix, so branches working on different areas rarely touch the same lines: `shell_` (app shell, sidebar, user menu, theme), `auth_` (login, not allowed), `error_page_`, `settings_`, `list_`, `task_`, `subtask_`, `priority_`, `sort_`, `toast_`, `confirm_`, `api_error_`, `date_`, `recurrence_`, `scope_` (the Occurrence scope dialog), `feed_` (Calendar Link events), `default_list_`. A new area adds its prefix to `KEY_PREFIXES` in `src/lib/translations.spec.ts`. That test (part of `npm test`, so CI) fails when a message is missing in some Language or exists only there, is empty, uses other `{placeholders}` than English, or when keys are unsorted or unprefixed. Paraglide itself would silently fall back to English.
+
+Placeholders are `{name}`. Counts use plural rules, never string concatenation:
+
+```json
+"task_completed_count": [
+	{
+		"declarations": ["input count", "local countPlural = count: plural"],
+		"selectors": ["countPlural"],
+		"match": { "countPlural=one": "{count} erledigte Aufgabe", "countPlural=*": "{count} erledigte Aufgaben" }
+	}
+]
+```
+
+**German style**: address the User with "du", or better, phrase things impersonally ("Liste hinzufügen"). Use the glossary's terms: List = Liste, Task = Aufgabe, Subtask = Unteraufgabe, Planned Date = Geplant, Due Date = Fällig, Duration = Dauer, Priority = Priorität (Hoch/Mittel/Niedrig), Completed = Erledigt, Reopen = Wieder öffnen, Undo = Rückgängig, Recurrence = Wiederholung, Occurrence = Termin, Custom Order = Eigene Reihenfolge, Sort Mode = Sortierung, Calendar Link = Kalender-Link. The app is called Tasks in every Language, so "Tasks" stays out of the messages (`<title>{m.auth_sign_in()} · Tasks</title>`). What Users create, like List names, is never translated.
+
+**Which Language**: the `handle` hook from `createLanguageHandle` (`src/lib/server/language.ts`, after the auth hook) resolves it once per request with `resolveLanguage`: the User's stored choice if there is one (the `preference` passed in `src/hooks.server.ts`), otherwise the first Language we speak in `Accept-Language` by preference, otherwise English. During the request `m.*()` and Paraglide's `getLocale()` use it, `<html lang>` says it, and it is in `locals.language` and, for pages, `data.language`. The browser reads it back from `<html lang>` (`src/hooks.client.ts`) and keeps it for the whole document, so switching Language takes a full page load. Dates and times are formatted with `locals.dateLocale` / `data.dateLocale`, not the Language: the browser's own tag (`de-AT`, `en-GB`) under Automatic, the bare Language (`de`) when chosen. To speak a given Language whatever the request (e.g. a Calendar Link's owner's), pass it to the message, `m.feed_due({ title }, { locale: 'de' })`, or wrap the code in `withLanguage('de', () => …)` on the server.
+
+E2E tests run in English (`locale: 'en-US'` in `playwright.config.ts`); a test in German says `test.use({ locale: 'de-DE' })`, and `loginAs` works in both.
 
 ### Database migrations
 

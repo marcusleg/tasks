@@ -3,6 +3,7 @@
 	import type { Snippet } from 'svelte';
 	import { tick } from 'svelte';
 	import ThemeSwitch from './ThemeSwitch.svelte';
+	import { m } from '#lib/paraglide/messages.js';
 
 	/**
 	 * The header's compact user menu: an initial-in-a-circle button that opens a popover with the
@@ -59,7 +60,7 @@
 		type="button"
 		class="trigger"
 		disabled={!hydration.done}
-		aria-label="User menu"
+		aria-label={m.shell_user_menu()}
 		aria-expanded={open}
 		aria-controls="{id}-popover"
 		onclick={toggle}
@@ -72,12 +73,12 @@
 		class="popover"
 		bind:this={popover}
 		role="group"
-		aria-label="User"
+		aria-label={m.shell_user()}
 		hidden={!open}
 	>
 		<p class="name">{name}</p>
 		<div class="row">
-			<span class="label">Theme</span>
+			<span class="label">{m.shell_theme()}</span>
 			<ThemeSwitch />
 		</div>
 		{@render actions?.()}

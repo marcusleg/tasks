@@ -5,19 +5,20 @@ import { describeError, startLogin } from '#lib/server/auth/oidc.js';
 import { sanitizeReturnTo } from '#lib/server/auth/return-to.js';
 import type { Actions, PageServerLoad } from './$types';
 
-const ERRORS: Record<string, string> = {
-	expired: 'Your sign-in attempt expired. Please try again.',
-	failed: 'Signing in failed. Please try again.',
-	denied: 'The identity provider denied the sign-in.',
-	provider: 'The identity provider reported an error. Please try again.'
-};
+/** Why signing in didn't work, as `?error=` from the callback; the page words it. */
+const ERRORS = ['expired', 'failed', 'denied', 'provider'] as const;
+export type LoginError = (typeof ERRORS)[number] | 'unreachable';
+
+function loginError(value: string | null): LoginError | null {
+	if (value === null) return null;
+	return ERRORS.find((error) => error === value) ?? 'failed';
+}
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) redirect(303, sanitizeReturnTo(url.searchParams.get('returnTo')));
 
-	const error = url.searchParams.get('error');
 	return {
-		error: error ? (ERRORS[error] ?? ERRORS.failed) : null,
+		error: loginError(url.searchParams.get('error')),
 		signedOut: url.searchParams.has('signedOut')
 	};
 };
@@ -30,11 +31,10 @@ export const actions: Actions = {
 		let login: Awaited<ReturnType<typeof startLogin>>;
 		try {
 			login = await startLogin(config, returnTo);
-		} catch (error) {
-			console.error('Could not start OIDC login:', describeError(error));
-			return fail(502, {
-				error: 'The identity provider could not be reached. Please try again in a moment.'
-			});
+		} catch (cause) {
+			console.error('Could not start OIDC login:', describeError(cause));
+			const error: LoginError = 'unreachable';
+			return fail(502, { error });
 		}
 
 		setLoginFlowCookie(cookies, config, login.flow);

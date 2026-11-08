@@ -7,7 +7,7 @@ import { createTestDb, insertUser } from './testing/index';
 
 describe('requireUser', () => {
 	it('rejects anonymous access with a 401', () => {
-		const locals: App.Locals = { user: null, session: null };
+		const locals: Pick<App.Locals, 'user' | 'session'> = { user: null, session: null };
 
 		let thrown: unknown;
 		try {

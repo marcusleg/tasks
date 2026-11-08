@@ -1,26 +1,36 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
+	import type { LoginError } from './+page.server';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	const ERRORS: Record<LoginError, () => string> = {
+		expired: m.auth_login_error_expired,
+		failed: m.auth_login_error_failed,
+		denied: m.auth_login_error_denied,
+		provider: m.auth_login_error_provider,
+		unreachable: m.auth_login_error_unreachable
+	};
 
 	let error = $derived(form?.error ?? data.error);
 </script>
 
 <svelte:head>
-	<title>Sign in · Tasks</title>
+	<title>{m.auth_sign_in()} · Tasks</title>
 </svelte:head>
 
 <main class="auth-page">
 	<h1>Tasks</h1>
 
 	{#if error}
-		<p class="message error" role="alert">{error}</p>
+		<p class="message error" role="alert">{ERRORS[error]()}</p>
 	{:else if data.signedOut}
-		<p class="message" role="status">You have been signed out.</p>
+		<p class="message" role="status">{m.auth_login_signed_out()}</p>
 	{/if}
 
 	<form method="POST">
-		<button type="submit">Sign in</button>
+		<button type="submit">{m.auth_sign_in()}</button>
 	</form>
 </main>
 

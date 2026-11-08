@@ -9,12 +9,13 @@
 	import { MAX_LIST_NAME_LENGTH, moveToIndex } from '#lib/domain/lists.js';
 	import { invalidate } from '$app/navigation';
 	import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	const lists = getListStore();
 
 	const links = [
-		{ href: '/priority', label: 'Priority' },
-		{ href: '/settings', label: 'Settings' }
+		{ href: '/priority', label: m.shell_sidebar_priority },
+		{ href: '/settings', label: m.shell_sidebar_settings }
 	] as const;
 
 	/** The List shown in the main area (`/` shows the last-viewed one). */
@@ -40,7 +41,7 @@
 		const { id, name } = all[from];
 		const target = Math.max(0, Math.min(all.length - 1, to));
 		const done = lists.move(id, move);
-		announcement = `${name} moved to position ${target + 1} of ${all.length}`;
+		announcement = m.shell_sidebar_list_moved({ name, position: target + 1, count: all.length });
 		await tick();
 		focusEl?.focus();
 		await done;
@@ -122,9 +123,9 @@
 	}
 </script>
 
-<nav aria-label="Main">
+<nav aria-label={m.shell_sidebar_main_nav()}>
 	<section aria-labelledby="sidebar-lists-heading">
-		<h2 id="sidebar-lists-heading">Lists</h2>
+		<h2 id="sidebar-lists-heading">{m.shell_sidebar_lists()}</h2>
 		<!-- Preload on tap, not hover: loading a List marks it as last viewed. -->
 		<ul bind:this={listEl} class="lists" data-sveltekit-preload-data="tap">
 			{#each lists.all as list, index (list.id)}
@@ -146,7 +147,7 @@
 						class="handle"
 						data-reorder
 						disabled={!hydration.done}
-						aria-label="Reorder {list.name}"
+						aria-label={m.shell_sidebar_reorder_list({ name: list.name })}
 						aria-describedby="reorder-hint"
 						onpointerdown={(event) => dragStart(event, list.id, index)}
 						onpointermove={dragMove}
@@ -167,7 +168,7 @@
 					<label class="visibility">
 						<input
 							type="checkbox"
-							aria-label="Show {list.name}"
+							aria-label={m.shell_sidebar_show_list({ name: list.name })}
 							checked={list.visible}
 							disabled={!hydration.done}
 							onchange={(event) => toggle(list.id, event.currentTarget.checked)}
@@ -197,17 +198,18 @@
 			{/each}
 		</ul>
 		<p id="reorder-hint" class="visually-hidden">
-			Drag to reorder, or press Arrow Up or Arrow Down. Alt+Arrow works on any part of the entry.
+			{m.shell_sidebar_reorder_hint()}
 		</p>
 		<p class="visually-hidden" role="status" aria-live="polite">{announcement}</p>
 		{#if creating}
 			<form class="new-list" onsubmit={create}>
-				<label class="visually-hidden" for="new-list-name">New list name</label>
+				<label class="visually-hidden" for="new-list-name">{m.shell_sidebar_new_list_label()}</label
+				>
 				<input
 					bind:this={input}
 					id="new-list-name"
 					bind:value={name}
-					placeholder="List name"
+					placeholder={m.shell_sidebar_new_list_placeholder()}
 					maxlength={MAX_LIST_NAME_LENGTH}
 					autocomplete="off"
 					{onkeydown}
@@ -232,7 +234,7 @@
 						fill="none"
 					/>
 				</svg>
-				New list
+				{m.shell_sidebar_new_list()}
 			</button>
 		{/if}
 	</section>
@@ -246,7 +248,7 @@
 					href={link.href}
 					aria-current={page.url.pathname.startsWith(link.href) ? 'page' : undefined}
 				>
-					{link.label}
+					{link.label()}
 				</a>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			</li>

@@ -6,11 +6,12 @@
 		writePreference,
 		type ThemePreference
 	} from '#lib/theme.js';
+	import { m } from '#lib/paraglide/messages.js';
 
-	const options: { value: ThemePreference; label: string }[] = [
-		{ value: 'system', label: 'System' },
-		{ value: 'light', label: 'Light' },
-		{ value: 'dark', label: 'Dark' }
+	const options: { value: ThemePreference; label: () => string }[] = [
+		{ value: 'system', label: m.shell_theme_system },
+		{ value: 'light', label: m.shell_theme_light },
+		{ value: 'dark', label: m.shell_theme_dark }
 	];
 
 	let preference = $state<ThemePreference>('system');
@@ -45,7 +46,7 @@
 	});
 </script>
 
-<div class="switch" role="radiogroup" aria-label="Theme">
+<div class="switch" role="radiogroup" aria-label={m.shell_theme()}>
 	{#each options as option (option.value)}
 		<label class:selected={preference === option.value}>
 			<input
@@ -55,7 +56,7 @@
 				checked={preference === option.value}
 				onchange={() => choose(option.value)}
 			/>
-			<span>{option.label}</span>
+			<span>{option.label()}</span>
 		</label>
 	{/each}
 </div>

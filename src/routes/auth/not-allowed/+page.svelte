@@ -1,18 +1,16 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { m } from '#lib/paraglide/messages.js';
 </script>
 
 <svelte:head>
-	<title>Not allowed · Tasks</title>
+	<title>{m.auth_not_allowed_title()} · Tasks</title>
 </svelte:head>
 
 <main class="auth-page">
-	<h1>Not allowed</h1>
-	<p>
-		Your account isn't in the group that may use this app, so you can't sign in. Ask the
-		administrator to add you to the group, or sign in with a different account.
-	</p>
-	<p><a href={resolve('/auth/login')}>Back to sign in</a></p>
+	<h1>{m.auth_not_allowed_title()}</h1>
+	<p>{m.auth_not_allowed_text()}</p>
+	<p><a href={resolve('/auth/login')}>{m.auth_not_allowed_back()}</a></p>
 </main>
 
 <style>
