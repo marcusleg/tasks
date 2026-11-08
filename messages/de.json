@@ -44,7 +44,7 @@
 	"settings_calendar_link_url": "URL",
 	"settings_calendar_link_url_copied": "URL kopiert",
 	"settings_calendar_links": "Kalender-Links",
-	"settings_calendar_links_description": "Ein Kalender-Link ist eine geheime URL, die die geplanten und fälligen Termine deiner offenen Aufgaben als schreibgeschützten Kalender veröffentlicht. Wer die URL kennt, sieht diese Aufgaben. Zum Widerrufen den Link also löschen.",
+	"settings_calendar_links_description": "Ein Kalender-Link ist eine geheime URL, die die Plan- und Fälligkeitsdaten deiner offenen Aufgaben als schreibgeschützten Kalender veröffentlicht. Wer die URL kennt, sieht diese Aufgaben. Zum Widerrufen den Link also löschen.",
 	"settings_calendar_links_empty": "Noch keine Kalender-Links.",
 	"settings_calendar_links_help": "Kalender-Link zur Kalender-App hinzufügen",
 	"settings_calendar_links_help_refresh": "Kalender-Apps aktualisieren abonnierte Kalender nach eigenem Zeitplan, oft nur alle paar Stunden. Änderungen erscheinen daher möglicherweise nicht sofort.",

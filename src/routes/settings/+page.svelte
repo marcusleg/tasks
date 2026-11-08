@@ -3,7 +3,7 @@
 	import { api } from '#lib/client/api.js';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { getToasts } from '#lib/client/toasts.svelte.js';
-	import { LANGUAGES, type LanguagePreference } from '#lib/language.js';
+	import { LANGUAGES, type Language, type LanguagePreference } from '#lib/language.js';
 	import { m } from '#lib/paraglide/messages.js';
 	import {
 		MAX_CALENDAR_LINK_NAME_LENGTH,
@@ -17,6 +17,12 @@
 
 	const lists = getListStore();
 	const toasts = getToasts();
+
+	/** Each Language in its own language, whatever the current one. Complete by type. */
+	const languageNames: Record<Language, () => string> = {
+		en: () => m.settings_language_en(),
+		de: () => m.settings_language_de()
+	};
 
 	let languagePreference = $derived<LanguagePreference>(data.languagePreference);
 	let languageError = $state('');
@@ -156,10 +162,7 @@
 		>
 			<option value="automatic">{m.settings_language_automatic()}</option>
 			{#each LANGUAGES as language (language)}
-				<!-- Each Language in its own language, whatever the current one. -->
-				<option value={language}>
-					{language === 'de' ? m.settings_language_de() : m.settings_language_en()}
-				</option>
+				<option value={language} lang={language}>{languageNames[language]()}</option>
 			{/each}
 		</select>
 		{#if languageError}
