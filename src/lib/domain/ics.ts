@@ -6,7 +6,8 @@
  * - Planned: SUMMARY is the title. Date-only → all-day (`VALUE=DATE`, DTEND the next day); timed →
  *   `TZID` wall-clock start and DTEND = start + Duration in elapsed time (DURATION instead when
  *   that end is a repeated wall-clock time, which DTEND would read as the earlier instance).
- * - Due: SUMMARY is `Due: <title>` (`labels.due`; the labels speak the owner's Language, UIDs don't). Date-only → all-day; timed → zero-length, as `DURATION:PT0S`.
+ * - Due: SUMMARY is `Due: <title>` (`labels.due`; the labels speak the owner's Language, UIDs
+ *   don't). Date-only → all-day; timed → zero-length, as `DURATION:PT0S`.
  *   RFC 5545 requires DTEND to be later than DTSTART, so DTEND = DTSTART would be invalid; a
  *   DURATION also makes a fixed length a one-option change (`dueEventMinutes`, e.g. 1).
  * - When both dates are the same day (date-only) or the same wall-clock time in the same zone,
