@@ -32,12 +32,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	};
 
 	const list = withInputErrors(() => updateList(scope, params.id, patch));
-	if (!list) notFound('List');
+	if (!list) notFound('List', 'list_not_found');
 	return json({ list: serializeList(list) });
 };
 
 /** Deletes a List and all of its Tasks. */
 export const DELETE: RequestHandler = ({ locals, params }) => {
-	if (!deleteList(userScope(locals), params.id)) notFound('List');
+	if (!deleteList(userScope(locals), params.id)) notFound('List', 'list_not_found');
 	return new Response(null, { status: 204 });
 };

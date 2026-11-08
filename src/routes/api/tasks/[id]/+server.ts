@@ -34,7 +34,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	const applyTo = readApplyTo(body.applyTo);
 
 	const changes = withInputErrors(() => updateTask(scope, params.id, patch, applyTo));
-	if (!changes) notFound('Task');
+	if (!changes) notFound('Task', 'task_not_found');
 	return json(serializeChanges(changes));
 };
 
@@ -52,7 +52,7 @@ export const DELETE: RequestHandler = ({ locals, params, url }) => {
 	const changes = undoable(scope, () =>
 		deleteTask(scope, params.id, applyTo, new Date(), timeZone)
 	);
-	if (!changes) notFound('Task');
+	if (!changes) notFound('Task', 'task_not_found');
 	return json({
 		...serializeChanges(changes),
 		undo: changes.undoId

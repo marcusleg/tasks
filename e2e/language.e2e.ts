@@ -1,5 +1,6 @@
 import { expect, test } from './fixtures';
 import { loginAs, setMockUser } from './auth';
+import { appOrigin } from './env';
 
 test.describe('a German browser', () => {
 	test.use({ locale: 'de-DE' });
@@ -46,6 +47,33 @@ test.describe('a German browser', () => {
 
 		await menu.getByRole('button', { name: 'Abmelden' }).click();
 		await expect(page.getByRole('status')).toHaveText('Du wurdest abgemeldet.');
+	});
+
+	test('shows what the server refused in German, e.g. a Task whose List was deleted meanwhile', async ({
+		page
+	}) => {
+		await loginAs(page);
+		const listId = crypto.randomUUID();
+		const post = (path: string, data: object) =>
+			page.request.post(path, { data, headers: { origin: appOrigin } });
+		expect((await post('/api/lists', { id: listId, name: 'Besorgungen' })).status()).toBe(201);
+		expect((await post('/api/tasks', { listId, title: 'Briefmarken' })).status()).toBe(201);
+		await page.goto(`/lists/${listId}`);
+		const stamps = page.getByRole('checkbox', { name: 'Briefmarken', exact: true });
+		await expect(stamps).toBeVisible();
+
+		// As if from another tab.
+		const gone = await page.request.delete(`/api/lists/${listId}`, {
+			headers: { origin: appOrigin }
+		});
+		expect(gone.status()).toBe(204);
+
+		await stamps.click();
+		// The toast's own words are translated separately; the reason is the server's code, translated.
+		await expect(
+			page.getByRole('status').filter({ hasText: 'Diese Aufgabe gibt es nicht mehr' })
+		).toBeVisible();
+		await expect(page.getByText('Task not found')).toHaveCount(0);
 	});
 
 	test('gets the error and not-allowed pages in German', async ({ page }) => {

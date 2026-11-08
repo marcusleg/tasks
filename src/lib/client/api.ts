@@ -3,6 +3,8 @@
  * through here; pages get their initial data from `load` functions.
  */
 import { resolve } from '$app/paths';
+import { m } from '#lib/paraglide/messages.js';
+import { apiErrorMessage } from './api-errors.js';
 import type { SerializedCalendarLink } from '#lib/domain/calendar-links.js';
 import type { LanguagePreference } from '#lib/language.js';
 import type { SerializedList, SortMode } from '#lib/domain/lists.js';
@@ -12,10 +14,16 @@ import type { SerializedRecurrence } from '#lib/domain/recurrence.js';
 import type { ApplyTo } from '#lib/domain/recurring-tasks.js';
 import type { Priority, TaskChanges } from '#lib/domain/tasks.js';
 
+/**
+ * A failed request. `message` is what to show: the translation of the server's error code if it
+ * sent one (`./api-errors`), otherwise the server's own text.
+ */
 export class ApiError extends Error {
 	constructor(
 		readonly status: number,
-		message: string
+		message: string,
+		/** The server's error code, if the error is one a User can run into. */
+		readonly code?: string
 	) {
 		super(message);
 		this.name = 'ApiError';
@@ -49,14 +57,19 @@ async function send<T>(method: string, path: string, body?: object): Promise<T> 
 		// The session ended (expired, or signed out elsewhere): sign in again and come back.
 		const returnTo = location.pathname + location.search;
 		location.assign(`${resolve('/auth/login')}?returnTo=${encodeURIComponent(returnTo)}`);
-		throw new ApiError(401, 'Not signed in');
+		throw new ApiError(401, m.api_error_not_signed_in());
 	}
 	if (!response.ok) {
-		const message = await response
+		const body: { message?: string; code?: string } | null = await response
 			.json()
-			.then((json: { message?: string }) => json.message)
-			.catch(() => undefined);
-		throw new ApiError(response.status, message ?? `Request failed (${response.status})`);
+			.catch(() => null);
+		throw new ApiError(
+			response.status,
+			apiErrorMessage(body?.code) ??
+				body?.message ??
+				m.api_error_request_failed({ status: response.status }),
+			body?.code
+		);
 	}
 	return (response.status === 204 ? undefined : await response.json()) as T;
 }

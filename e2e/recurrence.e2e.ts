@@ -156,6 +156,23 @@ test('after the new Occurrence is edited, reopening the old one brings it back a
 	await expect(repeat(page)).toHaveValue('off');
 });
 
+test('clearing the last date of a repeating Task is refused with a message', async ({ page }) => {
+	await weeklyTask(page);
+	await openTask(page, 'Water plants');
+
+	await detailPanel(page).getByRole('button', { name: 'Clear planned date' }).click();
+	const prompt = page.getByRole('dialog', { name: 'Change a repeating task' });
+	const refused = page.waitForResponse((r) => r.request().method() === 'PATCH');
+	await prompt.getByRole('button', { name: 'This and all future' }).click();
+	const response = await refused;
+
+	expect(response.status()).toBe(400);
+	expect(await response.json()).toMatchObject({ code: 'recurrence_needs_date' });
+	await expect(page.getByRole('status', { name: 'Notifications' })).toContainText(
+		"Couldn't save the task. A repeating Task needs a Planned Date or a Due Date."
+	);
+});
+
 test('the Recurrence editor explains when a Task can’t repeat', async ({ page }) => {
 	await addTask(page, 'Garden');
 	await openTask(page, 'Garden');

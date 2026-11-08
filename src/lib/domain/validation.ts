@@ -1,7 +1,13 @@
+import type { ApiErrorCode } from './error-codes';
+
 /** Thrown when user input (a List name, a Task Title, …) is missing, malformed or too long. */
 export class InvalidInputError extends Error {
-	constructor(message: string) {
+	/** Set for the few failures a User can cause through the UI (`#lib/domain/error-codes`). */
+	readonly code?: ApiErrorCode;
+
+	constructor(message: string, code?: ApiErrorCode) {
 		super(message);
+		this.code = code;
 		this.name = 'InvalidInputError';
 	}
 }

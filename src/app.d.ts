@@ -2,7 +2,10 @@
 // for information about these interfaces
 declare global {
 	namespace App {
-		// interface Error {}
+		interface Error {
+			/** Set for errors a User can run into through the UI; the browser translates it. */
+			code?: import('#lib/domain/error-codes.js').ApiErrorCode;
+		}
 		interface Locals {
 			/** The signed-in User, set by the `handle` hook. `null` only on public routes. */
 			user: import('#lib/server/db/schema.js').User | null;

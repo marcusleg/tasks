@@ -18,10 +18,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		try {
 			return undoLatest(scope, undoId);
 		} catch (cause) {
-			if (cause instanceof UndoConflictError) error(409, cause.message);
+			if (cause instanceof UndoConflictError)
+				error(409, { message: cause.message, code: cause.code });
 			throw cause;
 		}
 	});
-	if (!changes) error(404, 'That action can’t be undone any more');
+	if (!changes)
+		error(404, { message: 'That action can’t be undone any more', code: 'undo_unavailable' });
 	return json(serializeChanges(changes));
 };

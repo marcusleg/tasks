@@ -1,9 +1,11 @@
 /**
  * Helpers for the JSON endpoints under `/api/` (see ADR 0003). Endpoints read a JSON body, call
  * the data-access layer with the User's scope, and answer with JSON. Errors are thrown with
- * SvelteKit's `error()`, so the browser gets `{ message }` with the status.
+ * SvelteKit's `error()`, so the browser gets `{ message }` with the status, and `code` too for the
+ * errors a User can run into (`#lib/domain/error-codes`).
  */
 import { error } from '@sveltejs/kit';
+import type { ApiErrorCode } from '#lib/domain/error-codes.js';
 import { InvalidInputError } from '#lib/domain/validation.js';
 
 export type JsonBody = Record<string, unknown>;
@@ -64,7 +66,9 @@ export function withInputErrors<T>(run: () => T): T {
 	try {
 		return run();
 	} catch (cause) {
-		if (cause instanceof InvalidInputError) error(400, cause.message);
+		if (cause instanceof InvalidInputError) {
+			error(400, { message: cause.message, ...(cause.code && { code: cause.code }) });
+		}
 		if (isConstraintError(cause, 'SQLITE_CONSTRAINT_PRIMARYKEY')) error(409, 'Id already in use');
 		throw cause;
 	}
@@ -75,6 +79,6 @@ function isConstraintError(cause: unknown, code: string): boolean {
 }
 
 /** The 404 for anything the User doesn't own, whether it exists or not. */
-export function notFound(what: string): never {
-	error(404, `${what} not found`);
+export function notFound(what: string, code: ApiErrorCode): never {
+	error(404, { message: `${what} not found`, code });
 }
