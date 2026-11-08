@@ -4,6 +4,13 @@ node_modules
 /.svelte-kit
 /build
 
+# Paraglide JS compiles messages/ here on every build, test and check
+/src/lib/paraglide/
+# inlang keeps caches next to the project settings
+/project.inlang/*
+!/project.inlang/settings.json
+!/project.inlang/paraglide.config.js
+
 # Local data (SQLite database in dev)
 /data
 *.db

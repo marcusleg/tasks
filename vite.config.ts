@@ -1,9 +1,12 @@
 import { defineConfig } from 'vitest/config';
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
 	plugins: [
+		// Compiles messages/*.json into src/lib/paraglide; options in project.inlang/paraglide.config.js.
+		paraglideVitePlugin({ project: './project.inlang' }),
 		sveltekit({
 			compilerOptions: {
 				// Force runes mode for the project, except for libraries. Can be removed in svelte 6.

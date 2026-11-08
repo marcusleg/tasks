@@ -50,7 +50,8 @@ export async function loginAs(
 	waitForHydrationOnNavigation(page);
 
 	await page.goto(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-	await page.getByRole('button', { name: 'Sign in' }).click();
+	// In whichever Language the context's browser locale asks for.
+	await page.getByRole('button', { name: /^(Sign in|Anmelden)$/ }).click();
 	await page.waitForURL(
 		(url) =>
 			url.origin === appOrigin &&

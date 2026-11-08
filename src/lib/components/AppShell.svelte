@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import UserMenu from './UserMenu.svelte';
+	import { m } from '#lib/paraglide/messages.js';
 
 	type Props = {
 		/** The signed-in user. The user area is not rendered when absent. */
@@ -59,7 +60,7 @@
 			type="button"
 			aria-expanded={open}
 			aria-controls="app-sidebar"
-			aria-label="Menu"
+			aria-label={m.shell_menu()}
 			onclick={toggle}
 		>
 			<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -85,7 +86,13 @@
 			<!-- Click-away layer for the drawer; keyboard users close it with Esc. -->
 			<div class="backdrop" role="presentation" onclick={() => close(false)}></div>
 		{/if}
-		<aside id="app-sidebar" class="sidebar" class:open bind:this={sidebarEl} aria-label="Sidebar">
+		<aside
+			id="app-sidebar"
+			class="sidebar"
+			class:open
+			bind:this={sidebarEl}
+			aria-label={m.shell_sidebar()}
+		>
 			{@render sidebar()}
 		</aside>
 		<main id="main">

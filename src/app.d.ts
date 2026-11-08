@@ -8,10 +8,18 @@ declare global {
 			user: import('#lib/server/db/schema.js').User | null;
 			/** The current session, set by the `handle` hook. `null` only on public routes. */
 			session: import('#lib/server/db/schema.js').Session | null;
+			/** The Language this request is rendered in, set by the language `handle` hook. */
+			language: import('#lib/language.js').Language;
+			/** The locale to write dates and times with (`de-AT`, `en`), set with `language`. */
+			dateLocale: string;
 		}
 		interface PageData {
 			/** Set by the root layout load; `null` on public pages such as login. */
 			user?: { id: string; name: string; email: string | null } | null;
+			/** Set by the root layout load on every page: see `App.Locals`. */
+			language: import('#lib/language.js').Language;
+			/** Set by the root layout load on every page: see `App.Locals`. */
+			dateLocale: string;
 		}
 		// interface PageState {}
 		// interface Platform {}

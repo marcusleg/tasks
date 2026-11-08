@@ -1,16 +1,20 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { m } from '#lib/paraglide/messages.js';
+
+	// Not `page.error.message`: that is the server's English, e.g. "List not found".
+	const notFound = $derived(page.status === 404);
 </script>
 
 <svelte:head>
-	<title>{page.status === 404 ? 'Not found' : 'Error'} · Tasks</title>
+	<title>{notFound ? m.error_page_not_found_title() : m.error_page_error_tab()} · Tasks</title>
 </svelte:head>
 
 <section>
-	<h1>{page.status === 404 ? 'Not found' : 'Something went wrong'}</h1>
-	<p>{page.error?.message}</p>
-	<a href={resolve('/')}>Back to your tasks</a>
+	<h1>{notFound ? m.error_page_not_found_title() : m.error_page_error_title()}</h1>
+	<p>{notFound ? m.error_page_not_found_text() : m.error_page_error_text()}</p>
+	<a href={resolve('/')}>{m.error_page_back()}</a>
 </section>
 
 <style>

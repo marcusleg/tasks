@@ -24,6 +24,9 @@ export default defineConfig({
 	reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
 	use: {
 		baseURL: appOrigin,
+		// The app speaks the browser's Language (Accept-Language); the suite runs in English. A test
+		// for another Language says so with `test.use({ locale: 'de-DE' })`.
+		locale: 'en-US',
 		// adapter-node assumes https unless PROTOCOL_HEADER says otherwise, which
 		// would make SvelteKit's CSRF origin check reject every form post over
 		// plain http. Play the reverse proxy's part (see "Reverse proxy" in the README).

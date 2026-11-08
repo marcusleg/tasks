@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
+	import { loginErrorMessage } from './login-error';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -7,20 +9,20 @@
 </script>
 
 <svelte:head>
-	<title>Sign in · Tasks</title>
+	<title>{m.auth_sign_in()} · Tasks</title>
 </svelte:head>
 
 <main class="auth-page">
 	<h1>Tasks</h1>
 
 	{#if error}
-		<p class="message error" role="alert">{error}</p>
+		<p class="message error" role="alert">{loginErrorMessage(error)}</p>
 	{:else if data.signedOut}
-		<p class="message" role="status">You have been signed out.</p>
+		<p class="message" role="status">{m.auth_login_signed_out()}</p>
 	{/if}
 
 	<form method="POST">
-		<button type="submit">Sign in</button>
+		<button type="submit">{m.auth_sign_in()}</button>
 	</form>
 </main>
 

@@ -10,7 +10,7 @@ import type { User } from './db/schema.js';
  * requests away from protected routes; this makes every load function and
  * action state that it needs a User, and narrows the type.
  */
-export function requireUser(locals: App.Locals): User {
+export function requireUser(locals: Pick<App.Locals, 'user' | 'session'>): User {
 	if (!locals.user) error(401, 'Not signed in');
 	return locals.user;
 }
@@ -27,7 +27,10 @@ export interface UserScope {
 }
 
 /** Builds the scope for the signed-in User. Throws a 401 if nobody is signed in. */
-export function userScope(locals: App.Locals, db: Db = getDb()): UserScope {
+export function userScope(
+	locals: Pick<App.Locals, 'user' | 'session'>,
+	db: Db = getDb()
+): UserScope {
 	return { userId: requireUser(locals).id, db };
 }
 
