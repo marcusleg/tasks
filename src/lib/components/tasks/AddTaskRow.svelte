@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import { navigating } from '$app/state';
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { getScopePrompt, ScopedTasks } from '#lib/client/occurrence-scope.svelte.js';
@@ -18,7 +19,7 @@
 		scopes?: ScopedTasks;
 	};
 
-	let { listId, parentId = null, label = 'Add a task', scopes: panelScopes }: Props = $props();
+	let { listId, parentId = null, label = m.task_add(), scopes: panelScopes }: Props = $props();
 
 	const scopes = $derived(panelScopes ?? new ScopedTasks(getScopePrompt(), getTaskStore()));
 	const id = $props.id();

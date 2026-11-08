@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -28,10 +29,10 @@
 	<ListPage focus={data.list} tasks={data.tasks} />
 {:else}
 	<section class="no-lists">
-		<h1>No lists yet</h1>
-		<p>Create a list to start adding tasks.</p>
+		<h1>{m.list_none_title()}</h1>
+		<p>{m.list_none_text()}</p>
 		<form onsubmit={create}>
-			<label for="first-list-name">List name</label>
+			<label for="first-list-name">{m.list_name_label()}</label>
 			<div class="row">
 				<input
 					id="first-list-name"
@@ -40,7 +41,7 @@
 					maxlength={MAX_LIST_NAME_LENGTH}
 					autocomplete="off"
 				/>
-				<button type="submit" disabled={!hydration.done}>Create list</button>
+				<button type="submit" disabled={!hydration.done}>{m.list_create()}</button>
 			</div>
 		</form>
 	</section>

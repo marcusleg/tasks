@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import type { Priority } from '#lib/domain/tasks.js';
 	import PriorityMarker from './PriorityMarker.svelte';
-	import { PRIORITY_CHOICES } from './priority.js';
+	import { priorityChoices } from './priority.js';
 
 	/** The Priority picker in the detail panel: a segmented radio group, None/Low/Medium/High. */
 	type Props = { value: Priority | null; onchange: (priority: Priority | null) => void };
@@ -12,9 +13,9 @@
 </script>
 
 <fieldset class="priority">
-	<legend class="label">Priority</legend>
+	<legend class="label">{m.priority_label()}</legend>
 	<div class="segments">
-		{#each PRIORITY_CHOICES as choice (choice.label)}
+		{#each priorityChoices() as choice (choice.label)}
 			<label class="segment">
 				<input
 					type="radio"

@@ -33,10 +33,30 @@ export function nestingError(
 	parent: Nestable,
 	child?: { id: string; hasSubtasks: boolean }
 ): string | null {
-	if (parent.parentId !== null) return 'A Subtask can’t have Subtasks of its own';
-	if (child?.id === parent.id) return 'A Task can’t be its own Subtask';
-	if (child?.hasSubtasks) return 'A Task with Subtasks can’t become a Subtask';
-	if (parent.completedAt) return 'A Completed Task can’t get new Subtasks; reopen it first';
+	const problem = nestingProblem(parent, child);
+	return problem && NESTING_MESSAGES[problem];
+}
+
+/** Why a Task can't become a Subtask (see {@link nestingProblem}). */
+export type NestingProblem =
+	'parent-is-subtask' | 'own-subtask' | 'has-subtasks' | 'parent-completed';
+
+export const NESTING_MESSAGES: Record<NestingProblem, string> = {
+	'parent-is-subtask': 'A Subtask can’t have Subtasks of its own',
+	'own-subtask': 'A Task can’t be its own Subtask',
+	'has-subtasks': 'A Task with Subtasks can’t become a Subtask',
+	'parent-completed': 'A Completed Task can’t get new Subtasks; reopen it first'
+};
+
+/** Like {@link nestingError}, as a code the browser can word in the User's Language. */
+export function nestingProblem(
+	parent: Nestable,
+	child?: { id: string; hasSubtasks: boolean }
+): NestingProblem | null {
+	if (parent.parentId !== null) return 'parent-is-subtask';
+	if (child?.id === parent.id) return 'own-subtask';
+	if (child?.hasSubtasks) return 'has-subtasks';
+	if (parent.completedAt) return 'parent-completed';
 	return null;
 }
 

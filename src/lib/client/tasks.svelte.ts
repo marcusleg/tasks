@@ -30,13 +30,21 @@ import {
 	type CompletedGroup,
 	type CompletionChange
 } from '#lib/domain/subtasks.js';
-import { moveChanges, moveError, stepMove, type Step, type TaskMove } from '#lib/domain/moves.js';
+import {
+	moveChanges,
+	moveProblem,
+	stepMove,
+	type MoveProblem,
+	type Step,
+	type TaskMove
+} from '#lib/domain/moves.js';
 import { newId, timestamp } from '#lib/domain/validation.js';
 import type { TaskPatch, TaskPort } from './task-port.js';
 import { browserTimeZone } from './clock.svelte.js';
 import type { Scope } from './occurrence-scope.svelte.js';
 import { OptimisticQueue } from './optimistic-queue.js';
 import type { Toasts } from './toasts.svelte.js';
+import { m } from '#lib/paraglide/messages.js';
 
 type ById = Record<string, SerializedTask>;
 
@@ -192,7 +200,7 @@ export class TaskStore {
 				updatedAt: now
 			}
 		};
-		void this.#send('add the task', () =>
+		void this.#send(m.toast_what_add_task(), () =>
 			this.#port.createTask({
 				id,
 				listId,
@@ -207,7 +215,9 @@ export class TaskStore {
 	/** `scope` (from `ScopedTasks`): which Occurrences of a recurring Task the change reaches. */
 	update(id: string, patch: TaskPatch, scope: Scope): Promise<boolean> {
 		this.#patchLocal(id, patch);
-		return this.#send('save the task', () => this.#port.updateTask(id, patch, scope.applyTo));
+		return this.#send(m.toast_what_save_task(), () =>
+			this.#port.updateTask(id, patch, scope.applyTo)
+		);
 	}
 
 	/**
@@ -225,18 +235,18 @@ export class TaskStore {
 		let undoId: string | null = null;
 		// The Tasks the completion created (the next Occurrence), which Undo takes away again.
 		let created: string[] = [];
-		const done = this.#send('complete the task', async () => {
+		const done = this.#send(m.toast_what_complete_task(), async () => {
 			const answer = await this.#port.completeTask(id, browserTimeZone());
 			undoId = answer.undo;
 			created = answer.upserted.map((task) => task.id).filter((taskId) => !this.#tasks[taskId]);
 			return answer;
 		});
 		if (changes.length > 0) {
-			this.#offerUndo('Task completed', done, () => {
+			this.#offerUndo(m.toast_task_completed(), done, () => {
 				// At once, like the check-off; Undo's answer then sets the exact fields.
 				this.apply({ upserted: previous, deleted: created });
-				void this.#send('undo', () => {
-					if (!undoId) throw new Error('The task wasn’t completed');
+				void this.#send(m.toast_what_undo(), () => {
+					if (!undoId) throw new Error(m.toast_not_completed());
 					return this.#port.undo(undoId);
 				});
 			});
@@ -251,7 +261,7 @@ export class TaskStore {
 	 */
 	reopen(id: string): Promise<boolean> {
 		this.#applyCompletion(reopenChanges(Object.values(this.#tasks), id));
-		return this.#send('reopen the task', () => this.#port.reopenTask(id));
+		return this.#send(m.toast_what_reopen_task(), () => this.#port.reopenTask(id));
 	}
 
 	/**
@@ -268,7 +278,7 @@ export class TaskStore {
 		);
 		this.apply({ upserted: [], deleted: local.map((task) => task.id) });
 		let undoId: string | null = null;
-		const done = this.#send('delete the task', async () => {
+		const done = this.#send(m.toast_what_delete_task(), async () => {
 			const answer = await this.#port.deleteTask(id, {
 				applyTo: scope.applyTo,
 				timeZone: browserTimeZone()
@@ -276,20 +286,20 @@ export class TaskStore {
 			undoId = answer.undo;
 			return answer;
 		});
-		this.#offerUndo('Task deleted', done, () => {
+		this.#offerUndo(m.toast_task_deleted(), done, () => {
 			this.apply({ upserted: local, deleted: [] });
 			// Queued after the delete, so its answer (with `undo`) is in by then.
-			void this.#send('undo', () => {
-				if (!undoId) throw new Error('The task wasn’t deleted');
+			void this.#send(m.toast_what_undo(), () => {
+				if (!undoId) throw new Error(m.toast_not_deleted());
 				return this.#port.undo(undoId);
 			});
 		});
 		return done;
 	}
 
-	/** Why Task `id` can't make `move` (see `moveError`), or `null` if it can. */
-	moveError(id: string, move: TaskMove): string | null {
-		return moveError(Object.values(this.#tasks), id, move);
+	/** Why Task `id` can't make `move` (see `moveProblem`), or `null` if it can. */
+	moveProblem(id: string, move: TaskMove): MoveProblem | null {
+		return moveProblem(Object.values(this.#tasks), id, move);
 	}
 
 	/** The move that takes a Task one step from the keyboard, or `null` (see `stepMove`). */
@@ -315,11 +325,11 @@ export class TaskStore {
 		const done = this.#move(id, move, (answer) => (undoId = answer.undo));
 		if (toAnotherList) {
 			const name = this.#listName(move.listId);
-			this.#offerUndo(name ? `Moved to ${name}` : 'Task moved', done, () => {
+			this.#offerUndo(name ? m.toast_task_moved_to({ name }) : m.toast_task_moved(), done, () => {
 				this.apply({ upserted: local, deleted: [] });
 				// Queued after the move, so its answer (with `undo`) is in by then.
-				void this.#send('undo', () => {
-					if (!undoId) throw new Error('The task wasn’t moved');
+				void this.#send(m.toast_what_undo(), () => {
+					if (!undoId) throw new Error(m.toast_not_moved());
 					return this.#port.undo(undoId);
 				});
 			});
@@ -334,7 +344,7 @@ export class TaskStore {
 		onAnswer?: (answer: TaskChanges & { undo: string | null }) => void
 	): Promise<boolean> {
 		const all = Object.values(this.#tasks);
-		if (moveError(all, id, move)) return Promise.resolve(false);
+		if (moveProblem(all, id, move)) return Promise.resolve(false);
 		const changes = moveChanges(all, id, move);
 		const task = this.#tasks[id];
 		const unchanged =
@@ -346,7 +356,7 @@ export class TaskStore {
 		const next = { ...this.#tasks };
 		for (const { id: changed, ...patch } of changes) next[changed] = { ...next[changed], ...patch };
 		this.#tasks = next;
-		return this.#send('move the task', async () => {
+		return this.#send(m.toast_what_move_task(), async () => {
 			const answer = await this.#port.moveTask(id, move);
 			onAnswer?.(answer);
 			return answer;
@@ -361,7 +371,9 @@ export class TaskStore {
 				.filter((task) => task.listId === listId && task.completedAt)
 				.map((task) => task.id)
 		});
-		return this.#send('delete the completed tasks', () => this.#port.deleteCompletedTasks(listId));
+		return this.#send(m.toast_what_delete_completed(), () =>
+			this.#port.deleteCompletedTasks(listId)
+		);
 	}
 }
 

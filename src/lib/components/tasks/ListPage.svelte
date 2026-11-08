@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -93,7 +94,7 @@
 </svelte:head>
 
 <div class="switcher">
-	<label class="visually-hidden" for="list-switcher">List</label>
+	<label class="visually-hidden" for="list-switcher">{m.list_switcher()}</label>
 	<select id="list-switcher" value={focus.id} disabled={!hydration.done} onchange={switchTo}>
 		{#each lists.all as list (list.id)}
 			<option value={list.id}>{list.name}</option>
@@ -118,9 +119,7 @@
 </div>
 
 <p id="task-move-hint" class="visually-hidden">
-	Drag to move the task; drag right to make it a subtask, left to take it out. Or press Arrow Up or
-	Arrow Down to move it, Arrow Right to make it a subtask of the task above, Arrow Left to take it
-	out of its parent.
+	{m.task_drag_hint()}
 </p>
 <p class="visually-hidden" role="status" aria-live="polite">{drag.announcement}</p>
 
@@ -149,7 +148,7 @@
 					<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
 					<path d="M5.6 5.6l12.8 12.8" stroke="currentColor" stroke-width="2" />
 				</svg>
-				Not allowed: {active.invalid}
+				{m.task_drag_not_allowed({ reason: active.invalid })}
 			</span>
 		{/if}
 	</div>

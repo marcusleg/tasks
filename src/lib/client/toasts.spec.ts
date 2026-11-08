@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { m } from '#lib/paraglide/messages.js';
+import { overwriteGetLocale } from '#lib/paraglide/runtime.js';
 import { DISMISS_AFTER_MS, Toasts } from './toasts.svelte';
 
 beforeEach(() => {
@@ -101,5 +103,21 @@ describe('Toasts', () => {
 		toasts.show('Second');
 		vi.advanceTimersByTime(DISMISS_AFTER_MS - 1);
 		expect(messages(toasts)).toEqual(['Second']);
+	});
+});
+
+describe('Toasts.failed', () => {
+	afterEach(() => overwriteGetLocale(() => 'en'));
+
+	it('words a failure and its detail in the Language of the moment', () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const toasts = new Toasts();
+		toasts.failed(m.toast_what_save_task(), new Error("That task doesn't exist anymore"));
+		overwriteGetLocale(() => 'de');
+		toasts.failed(m.toast_what_save_task(), new Error('Diese Aufgabe gibt es nicht mehr'));
+		expect(messages(toasts)).toEqual([
+			"Couldn't save the task. That task doesn't exist anymore.",
+			'Aufgabe speichern fehlgeschlagen. Diese Aufgabe gibt es nicht mehr.'
+		]);
 	});
 });

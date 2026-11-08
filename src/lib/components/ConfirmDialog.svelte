@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	/**
 	 * A modal confirmation (native `<dialog>`): Esc or Cancel dismisses it, focus starts on Cancel
 	 * and returns to where it was when the dialog closes.
@@ -8,7 +9,7 @@
 		title: string;
 		message: string;
 		confirmLabel: string;
-		/** Defaults to English; pass a translated one. */
+		/** Defaults to the Language's "Cancel". */
 		cancelLabel?: string;
 		onConfirm: () => void;
 	};
@@ -18,7 +19,7 @@
 		title,
 		message,
 		confirmLabel,
-		cancelLabel = 'Cancel',
+		cancelLabel = m.confirm_cancel(),
 		onConfirm
 	}: Props = $props();
 

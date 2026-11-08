@@ -1,9 +1,10 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import { getScopePrompt, ScopedTasks } from '#lib/client/occurrence-scope.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import type { Priority, SerializedTask } from '#lib/domain/tasks.js';
 	import PriorityMarker from './PriorityMarker.svelte';
-	import { PRIORITY_CHOICES, PRIORITY_LABELS } from './priority.js';
+	import { priorityChoices, priorityLabel } from './priority.js';
 
 	/**
 	 * The Priority quick picker on a Task row: the marker as a button, opening a small menu of the
@@ -19,7 +20,11 @@
 	let root = $state<HTMLElement>();
 	let button = $state<HTMLButtonElement>();
 
-	const name = $derived(`Priority: ${task.priority ? PRIORITY_LABELS[task.priority] : 'None'}`);
+	const name = $derived(
+		m.priority_picker_name({
+			level: task.priority ? priorityLabel(task.priority) : m.priority_none()
+		})
+	);
 
 	function close(restoreFocus = true) {
 		open = false;
@@ -61,8 +66,8 @@
 	>
 		<PriorityMarker priority={task.priority} size={18} />
 	</button>
-	<ul id="{id}-menu" aria-label="Priority" hidden={!open}>
-		{#each PRIORITY_CHOICES as choice (choice.label)}
+	<ul id="{id}-menu" aria-label={m.priority_label()} hidden={!open}>
+		{#each priorityChoices() as choice (choice.label)}
 			<li>
 				<button
 					type="button"

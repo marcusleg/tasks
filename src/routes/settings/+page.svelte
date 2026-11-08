@@ -139,7 +139,7 @@
 			await api.deleteCalendarLink(link.id);
 			links = links.filter((l) => l.id !== link.id);
 		} catch (cause) {
-			toasts.failed('delete the Calendar Link', cause);
+			toasts.failed(m.toast_what_delete_calendar_link(), cause);
 		}
 	}
 </script>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '#lib/paraglide/messages.js';
 	import { onMount, tick, untrack } from 'svelte';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import {
@@ -209,9 +210,9 @@
 
 <aside class="detail" aria-labelledby="{id}-heading">
 	<header>
-		<h2 id="{id}-heading" class="visually-hidden">Task details</h2>
+		<h2 id="{id}-heading" class="visually-hidden">{m.task_details_heading()}</h2>
 		{#if parent}
-			<nav class="breadcrumb" aria-label="Parent task">
+			<nav class="breadcrumb" aria-label={m.task_parent_nav()}>
 				<button type="button" onclick={() => openTask(parent.id)}>
 					<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
 						<path
@@ -227,7 +228,7 @@
 				</button>
 			</nav>
 		{/if}
-		<button type="button" class="icon" aria-label="Close details" onclick={onClose}>
+		<button type="button" class="icon" aria-label={m.task_close_details()} onclick={onClose}>
 			<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 				<path
 					d="M6 6l12 12M18 6L6 18"
@@ -249,7 +250,7 @@
 				</button>
 			</p>
 		{/if}
-		<label class="visually-hidden" for="{id}-title">Title</label>
+		<label class="visually-hidden" for="{id}-title">{m.task_title()}</label>
 		<textarea
 			bind:this={titleInput}
 			id="{id}-title"
@@ -265,16 +266,16 @@
 		<div class="description">
 			<div class="label-row">
 				{#if showEditor}
-					<label class="label" for="{id}-description">Details</label>
+					<label class="label" for="{id}-description">{m.task_details()}</label>
 				{:else}
-					<h3 class="label">Details</h3>
+					<h3 class="label">{m.task_details()}</h3>
 					<button
 						type="button"
 						class="link-button"
-						aria-label="Edit details"
+						aria-label={m.task_details_edit_label()}
 						onclick={editDescription}
 					>
-						Edit
+						{m.task_details_edit()}
 					</button>
 				{/if}
 			</div>
@@ -284,7 +285,7 @@
 					id="{id}-description"
 					rows="4"
 					maxlength={MAX_DESCRIPTION_LENGTH}
-					placeholder="Add details"
+					placeholder={m.task_details_add()}
 					bind:value={description}
 					oninput={scheduleSave}
 					onfocus={() => (editingDescription = true)}
@@ -313,7 +314,7 @@
 		{#if task.parentId === null}
 			<section class="subtasks" aria-labelledby="{id}-subtasks">
 				<div class="label-row">
-					<h3 id="{id}-subtasks" class="label">Subtasks</h3>
+					<h3 id="{id}-subtasks" class="label">{m.subtask_heading()}</h3>
 					{#if subtasks.length > 0}
 						<span class="count">{subtasksDone}/{subtasks.length}</span>
 					{/if}
@@ -326,15 +327,15 @@
 					</ul>
 				{/if}
 				{#if completed}
-					<p class="hint">Reopen the task to add subtasks.</p>
+					<p class="hint">{m.subtask_reopen_hint()}</p>
 				{:else}
-					<AddTaskRow listId={task.listId} parentId={task.id} label="Add subtask" {scopes} />
+					<AddTaskRow listId={task.listId} parentId={task.id} label={m.subtask_add()} {scopes} />
 				{/if}
 			</section>
 		{/if}
 
 		<div class="move">
-			<label class="label" for="{id}-list">List</label>
+			<label class="label" for="{id}-list">{m.task_list()}</label>
 			<select
 				id="{id}-list"
 				value={task.listId}
@@ -347,16 +348,16 @@
 				{/each}
 			</select>
 			{#if completed}
-				<p id="{id}-list-hint" class="hint">Reopen the task to move it.</p>
+				<p id="{id}-list-hint" class="hint">{m.task_move_reopen_hint()}</p>
 			{/if}
 		</div>
 	</div>
 
 	<footer>
 		<button type="button" class="secondary" onclick={toggleCompleted}>
-			{completed ? 'Mark uncompleted' : 'Mark completed'}
+			{completed ? m.task_mark_uncompleted() : m.task_mark_completed()}
 		</button>
-		<button type="button" class="danger" onclick={remove}>Delete task</button>
+		<button type="button" class="danger" onclick={remove}>{m.task_delete()}</button>
 	</footer>
 </aside>
 
