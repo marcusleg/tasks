@@ -27,6 +27,7 @@
  * goes right before that sibling.
  */
 import { and, eq, getTableColumns, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import type { ApiErrorCode } from '#lib/domain/error-codes.js';
 import { restoredPosition } from '#lib/domain/moves.js';
 import { byCustomOrder, serializeTask } from '#lib/domain/tasks.js';
 import { toTask } from './db/mapping.js';
@@ -48,7 +49,10 @@ interface Families {
 
 /** The state has moved on (see above), or the record is unusable: a 409, and nothing was written. */
 export class UndoConflictError extends Error {
-	constructor(message: string) {
+	constructor(
+		message: string,
+		readonly code: ApiErrorCode = 'undo_unavailable'
+	) {
 		super(message);
 		this.name = 'UndoConflictError';
 	}
@@ -242,7 +246,8 @@ function assertNotMovedOn(scope: UserScope, { before, after }: Families) {
 		.from(lists)
 		.where(and(ownedBy(lists.userId, scope), inArray(lists.id, listIds)))
 		.all();
-	if (existingLists.length < listIds.length) throw new UndoConflictError('The List is gone');
+	if (existingLists.length < listIds.length)
+		throw new UndoConflictError('The List is gone', 'undo_list_gone');
 
 	const was = byId(before);
 	const left = byId(after);
@@ -260,7 +265,10 @@ function assertNotMovedOn(scope: UserScope, { before, after }: Families) {
 		(task) => undone.includes(task.id) || topLevel.has(task.id) || rewritten.has(familyOf(task))
 	);
 	if (!asLeft(scope, expected, [...undone, ...topLevel], [...rewritten])) {
-		throw new UndoConflictError('The Task or its Subtasks changed in the meantime');
+		throw new UndoConflictError(
+			'The Task or its Subtasks changed in the meantime',
+			'undo_state_changed'
+		);
 	}
 }
 

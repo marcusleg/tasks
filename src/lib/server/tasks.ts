@@ -330,7 +330,7 @@ function recurrenceColumns(
 ): Partial<typeof tasks.$inferInsert> {
 	const dates = { planned: patch.planned ?? task.planned, due: patch.due ?? task.due };
 	const recurs = patch.recurrence === undefined ? task.recurrence !== null : !!patch.recurrence;
-	if (recurs && !hasDate(dates)) throw new InvalidInputError(NEEDS_A_DATE);
+	if (recurs && !hasDate(dates)) throw new InvalidInputError(NEEDS_A_DATE, 'recurrence_needs_date');
 	if (patch.recurrence === undefined) return {};
 	if (patch.recurrence === null) return { recurrence: null, seriesId: null, seriesTemplate: null };
 	// The next Occurrence is created on completion, so a Completed Task can't start a series.

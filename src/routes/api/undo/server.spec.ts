@@ -51,6 +51,16 @@ async function status(run: () => Response | Promise<Response>): Promise<number> 
 	}
 }
 
+/** The `{ message, code }` of an `error()` thrown by a handler. */
+async function errorBody(run: () => Response | Promise<Response>) {
+	try {
+		await run();
+	} catch (cause) {
+		return (cause as { body: { message: string; code?: string } }).body;
+	}
+	throw new Error('Expected an error');
+}
+
 /** A recurring Task whose Subtasks have a template; deletes "Fern" through the endpoint. */
 async function deleteFern(user: User) {
 	const listId = createList(scope(user), { name: 'Chores' }).id;
@@ -99,6 +109,7 @@ describe('POST /api/undo', () => {
 		const { fern, undoId } = await deleteFern(alice);
 
 		expect(await status(() => undo(bob, undoId))).toBe(404);
+		expect((await errorBody(() => undo(bob, undoId))).code).toBe('undo_unavailable');
 
 		expect(getTask(scope(alice), fern.id)).toBeUndefined();
 		expect(getTask(scope(bob), fern.id)).toBeUndefined();
@@ -118,6 +129,7 @@ describe('POST /api/undo', () => {
 		const before = getListTasks(scope(alice), listId);
 
 		expect(await status(() => undo(alice, undoId))).toBe(409);
+		expect((await errorBody(() => undo(alice, undoId))).code).toBe('undo_state_changed');
 
 		expect(getListTasks(scope(alice), listId)).toEqual(before);
 	});
@@ -127,6 +139,7 @@ describe('POST /api/undo', () => {
 		db.update(undoRecords).set({ before: 'not json' }).run();
 
 		expect(await status(() => undo(alice, undoId))).toBe(409);
+		expect((await errorBody(() => undo(alice, undoId))).code).toBe('undo_unavailable');
 
 		expect(getTask(scope(alice), fern.id)).toBeUndefined();
 	});
@@ -141,8 +154,9 @@ describe('POST /api/undo', () => {
 		expect(getTask(scope(bob), fern.id)?.title).toBe('Bob’s');
 	});
 
-	it('answers 400 without an id', async () => {
+	it('answers 400 without an id, with no code: only a hand-made request does that', async () => {
 		expect(await status(() => POST(event(alice, { body: {} }) as never))).toBe(400);
+		expect((await errorBody(() => POST(event(alice, { body: {} }) as never))).code).toBeUndefined();
 		expect(await status(() => undo(alice, 42))).toBe(400);
 	});
 });

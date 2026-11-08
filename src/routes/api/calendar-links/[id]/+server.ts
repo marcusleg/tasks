@@ -26,12 +26,13 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		listIds: optionalStringList(body, 'listIds')
 	};
 	const link = withInputErrors(() => updateCalendarLink(scope, params.id, patch));
-	if (!link) notFound('Calendar Link');
+	if (!link) notFound('Calendar Link', 'calendar_link_not_found');
 	return json({ calendarLink: serializeCalendarLink(link, getAuthConfig().origin) });
 };
 
 /** Deletes a Calendar Link; its URL stops working immediately. */
 export const DELETE: RequestHandler = ({ locals, params }) => {
-	if (!deleteCalendarLink(userScope(locals), params.id)) notFound('Calendar Link');
+	if (!deleteCalendarLink(userScope(locals), params.id))
+		notFound('Calendar Link', 'calendar_link_not_found');
 	return new Response(null, { status: 204 });
 };

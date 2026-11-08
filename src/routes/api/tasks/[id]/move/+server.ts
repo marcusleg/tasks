@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			? undoable(scope, () => moveTask(scope, params.id, move))
 			: moveTask(scope, params.id, move)
 	);
-	if (!changes) notFound('Task or List');
+	if (!changes) notFound('Task or List', 'task_or_list_not_found');
 	return json({
 		...serializeChanges(changes),
 		undo: 'undoId' in changes ? changes.undoId : null

@@ -13,6 +13,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	await readJson(request);
 
 	const changes = reopenTask(scope, params.id);
-	if (!changes) notFound('Task');
+	if (!changes) notFound('Task', 'task_not_found');
 	return json(serializeChanges(changes));
 };

@@ -18,6 +18,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const timeZone = readTimeZone(await readJson(request));
 
 	const changes = undoable(scope, () => completeTask(scope, params.id, new Date(), timeZone));
-	if (!changes) notFound('Task');
+	if (!changes) notFound('Task', 'task_not_found');
 	return json({ ...serializeChanges(changes), undo: changes.undoId });
 };

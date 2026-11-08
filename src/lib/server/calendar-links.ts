@@ -97,7 +97,8 @@ function parseListIds(scope: UserScope, value: unknown): string[] {
 		.from(lists)
 		.where(and(ownedBy(lists.userId, scope), inArray(lists.id, ids)))
 		.all();
-	if (owned.length !== ids.length) throw new InvalidInputError('Unknown List');
+	if (owned.length !== ids.length)
+		throw new InvalidInputError('Unknown List', 'calendar_link_list_not_found');
 	return ids;
 }
 

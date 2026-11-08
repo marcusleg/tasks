@@ -33,6 +33,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const applyTo = readApplyTo(body.applyTo);
 
 	const changes = withInputErrors(() => createTask(scope, input, applyTo));
-	if (!changes) notFound('List');
+	if (!changes) notFound('List', 'list_not_found');
 	return json(serializeChanges(changes), { status: 201 });
 };
