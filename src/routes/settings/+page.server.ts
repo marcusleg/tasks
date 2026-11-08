@@ -8,6 +8,8 @@ export const load: PageServerLoad = ({ locals, depends }) => {
 	depends(CALENDAR_LINKS_DEPENDENCY);
 	const { origin } = getAuthConfig();
 	return {
+		// Read with the session (see `validateSessionToken`), so no extra query.
+		languagePreference: locals.languagePreference,
 		calendarLinks: getCalendarLinks(userScope(locals)).map((link) =>
 			serializeCalendarLink(link, origin)
 		)

@@ -12,6 +12,6 @@ export const init: ServerInit = () => {
 
 export const handle = sequence(
 	createAuthHandle({ db: getDb, config: getAuthConfig }),
-	// After auth, so a User's stored choice can come from `locals.user`.
-	createLanguageHandle({ preference: () => 'automatic' })
+	// After auth, which reads the User's stored choice together with their session.
+	createLanguageHandle({ preference: (event) => event.locals.languagePreference })
 );

@@ -8,6 +8,11 @@ declare global {
 			user: import('#lib/server/db/schema.js').User | null;
 			/** The current session, set by the `handle` hook. `null` only on public routes. */
 			session: import('#lib/server/db/schema.js').Session | null;
+			/**
+			 * The signed-in User's chosen Language, read together with the session; `'automatic'` when
+			 * nobody is signed in or they never chose one. Input to the language `handle` hook.
+			 */
+			languagePreference: import('#lib/language.js').LanguagePreference;
 			/** The Language this request is rendered in, set by the language `handle` hook. */
 			language: import('#lib/language.js').Language;
 			/** The locale to write dates and times with (`de-AT`, `en`), set with `language`. */

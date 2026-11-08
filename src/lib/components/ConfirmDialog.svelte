@@ -8,10 +8,19 @@
 		title: string;
 		message: string;
 		confirmLabel: string;
+		/** Defaults to English; pass a translated one. */
+		cancelLabel?: string;
 		onConfirm: () => void;
 	};
 
-	let { open = $bindable(), title, message, confirmLabel, onConfirm }: Props = $props();
+	let {
+		open = $bindable(),
+		title,
+		message,
+		confirmLabel,
+		cancelLabel = 'Cancel',
+		onConfirm
+	}: Props = $props();
 
 	let dialog = $state<HTMLDialogElement>();
 	const id = $props.id();
@@ -38,7 +47,7 @@
 	<p id="{id}-message">{message}</p>
 	<div class="actions">
 		<!-- First in the dialog, so showModal() focuses it. -->
-		<button type="button" class="secondary" onclick={() => (open = false)}>Cancel</button>
+		<button type="button" class="secondary" onclick={() => (open = false)}>{cancelLabel}</button>
 		<button type="button" class="danger" onclick={confirm}>{confirmLabel}</button>
 	</div>
 </dialog>

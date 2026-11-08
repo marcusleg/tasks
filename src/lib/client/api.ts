@@ -4,6 +4,7 @@
  */
 import { resolve } from '$app/paths';
 import type { SerializedCalendarLink } from '#lib/domain/calendar-links.js';
+import type { LanguagePreference } from '#lib/language.js';
 import type { SerializedList, SortMode } from '#lib/domain/lists.js';
 import type { SerializedDueDate, SerializedPlannedDate } from '#lib/domain/dates.js';
 import type { TaskMove } from '#lib/domain/moves.js';
@@ -154,5 +155,13 @@ export const api = {
 			patch
 		),
 	deleteCalendarLink: (id: string) =>
-		request<void>('DELETE', resolve('/api/calendar-links/[id]', { id }))
+		request<void>('DELETE', resolve('/api/calendar-links/[id]', { id })),
+
+	/** Chooses the User's Language. It shows from the next full page load. */
+	setLanguagePreference: (languagePreference: LanguagePreference) =>
+		request<{ languagePreference: LanguagePreference }>(
+			'PUT',
+			resolve('/api/language-preference'),
+			{ languagePreference }
+		)
 };

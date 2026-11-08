@@ -1,7 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { eq, lte } from 'drizzle-orm';
 import type { Db } from '#lib/server/db/client.js';
-import { sessions, users, type Session, type User } from '#lib/server/db/schema.js';
+import { isLanguagePreference, type LanguagePreference } from '#lib/language.js';
+import {
+	sessions,
+	userPreferences,
+	users,
+	type Session,
+	type User
+} from '#lib/server/db/schema.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -54,6 +61,8 @@ export function createSession(
 export interface ValidatedSession {
 	session: Session;
 	user: User;
+	/** The User's chosen Language, read in the same query as the User; Automatic if none yet. */
+	languagePreference: LanguagePreference;
 	/** True when the expiry was pushed forward, so the cookie must be re-sent. */
 	extended: boolean;
 }
@@ -74,15 +83,23 @@ export function validateSessionToken(
 
 	const id = hashSessionToken(token);
 	const row = db
-		.select({ session: sessions, user: users })
+		.select({
+			session: sessions,
+			user: users,
+			languagePreference: userPreferences.languagePreference
+		})
 		.from(sessions)
 		.innerJoin(users, eq(users.id, sessions.userId))
+		.leftJoin(userPreferences, eq(userPreferences.userId, users.id))
 		.where(eq(sessions.id, id))
 		.get();
 
 	if (!row) return null;
 
 	const { session, user } = row;
+	const languagePreference = isLanguagePreference(row.languagePreference)
+		? row.languagePreference
+		: 'automatic';
 	const remaining = session.expiresAt.getTime() - now.getTime();
 
 	if (remaining <= 0) {
@@ -96,10 +113,10 @@ export function validateSessionToken(
 			.set({ expiresAt: session.expiresAt })
 			.where(eq(sessions.id, session.id))
 			.run();
-		return { session, user, extended: true };
+		return { session, user, languagePreference, extended: true };
 	}
 
-	return { session, user, extended: false };
+	return { session, user, languagePreference, extended: false };
 }
 
 /** Ends one session (logout). Other sessions of the same User are untouched. */

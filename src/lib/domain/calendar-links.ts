@@ -1,4 +1,5 @@
 /** Calendar Links as shared by server and browser (CONTEXT.md → Calendar Link). */
+import { m } from '#lib/paraglide/messages.js';
 import { requiredText } from './validation';
 
 export const MAX_CALENDAR_LINK_NAME_LENGTH = 100;
@@ -22,18 +23,22 @@ export interface SerializedCalendarLink {
 	lastAccessedAt: string | null;
 }
 
-/** "never", or how long ago, e.g. "5 minutes ago". */
-export function formatLastAccessed(lastAccessedAt: string | null, now = new Date()): string {
-	if (lastAccessedAt === null) return 'never';
+/** "never", or how long ago in the given date locale, e.g. "5 minutes ago". */
+export function formatLastAccessed(
+	lastAccessedAt: string | null,
+	dateLocale: string,
+	now = new Date()
+): string {
+	if (lastAccessedAt === null) return m.settings_calendar_link_never_accessed();
 	const seconds = Math.round((new Date(lastAccessedAt).getTime() - now.getTime()) / 1000);
 	const units: [Intl.RelativeTimeFormatUnit, number][] = [
 		['day', 86_400],
 		['hour', 3600],
 		['minute', 60]
 	];
-	const format = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+	const format = new Intl.RelativeTimeFormat(dateLocale, { numeric: 'auto' });
 	for (const [unit, size] of units) {
 		if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
 	}
-	return 'just now';
+	return m.settings_calendar_link_accessed_just_now();
 }
