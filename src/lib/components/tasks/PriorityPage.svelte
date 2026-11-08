@@ -2,7 +2,7 @@
 	import { m } from '#lib/paraglide/messages.js';
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { onDestroy, tick } from 'svelte';
-	import { viewerTimeZone } from '#lib/client/clock.svelte.js';
+	import { dateLocale, viewerTimeZone } from '#lib/client/clock.svelte.js';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { closeTask, openTaskId } from '#lib/client/task-panel.js';
 	import { setTaskStore, TaskStore } from '#lib/client/tasks.svelte.js';
@@ -39,7 +39,7 @@
 	const groups = $derived(
 		PRIORITIES.map((priority) => ({
 			priority,
-			tasks: priorityGroup(store.all, priority, viewerTimeZone())
+			tasks: priorityGroup(store.all, priority, viewerTimeZone(), dateLocale())
 		}))
 	);
 

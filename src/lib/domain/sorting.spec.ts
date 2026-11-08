@@ -111,6 +111,27 @@ describe('sortTasks', () => {
 		]);
 	});
 
+	it('title: umlauts sort next to their base letter in German, after z in Swedish', () => {
+		const t = () => [
+			task({ id: '1', title: 'Zebra', position: 'a' }),
+			task({ id: '2', title: 'Äpfel', position: 'b' }),
+			task({ id: '3', title: 'Birne', position: 'c' }),
+			task({ id: '4', title: 'Apfel', position: 'd' })
+		];
+		expect(sortTasks(t(), 'title', 'UTC', 'de').map((x) => x.title)).toEqual([
+			'Äpfel',
+			'Apfel',
+			'Birne',
+			'Zebra'
+		]);
+		expect(sortTasks(t(), 'title', 'UTC', 'sv').map((x) => x.title)).toEqual([
+			'Apfel',
+			'Birne',
+			'Zebra',
+			'Äpfel'
+		]);
+	});
+
 	it('title: equal titles in different case fall back to Custom Order', () => {
 		const t = [
 			task({ id: 'b', title: 'Milk', position: 'b' }),

@@ -4,6 +4,8 @@
  * the browser (the Recurrence editor and row icon).
  */
 import type { Temporal } from 'temporal-polyfill';
+import type { Language } from '#lib/language.js';
+import { m } from '#lib/paraglide/messages.js';
 import {
 	localDate,
 	serializeDueDate,
@@ -190,16 +192,39 @@ export function nextOccurrenceStep(
 	return { ...next, days: from.until(to).days };
 }
 
-const UNITS = {
-	daily: ['daily', 'days'],
-	weekly: ['weekly', 'weeks'],
-	monthly: ['monthly', 'months'],
-	yearly: ['yearly', 'years']
-} as const;
+type MessageOptions = { locale?: Language };
 
-/** A short label for a Recurrence, e.g. "Repeats weekly" or "Repeats every 10 days after completion". */
-export function describeRecurrence(rule: RecurrenceRule): string {
-	const [single, plural] = UNITS[rule.frequency];
-	const every = rule.interval === 1 ? single : `every ${rule.interval} ${plural}`;
-	return `Repeats ${every}${rule.anchor === 'completion' ? ' after completion' : ''}`;
+/**
+ * A short label for a Recurrence, e.g. "Repeats weekly" or "Repeats every 10 days after
+ * completion", in the current Language (or the one in `options`).
+ */
+export function describeRecurrence(rule: RecurrenceRule, options?: MessageOptions): string {
+	const { interval } = rule;
+	const summary = (() => {
+		if (interval === 1) {
+			switch (rule.frequency) {
+				case 'daily':
+					return m.recurrence_summary_daily({}, options);
+				case 'weekly':
+					return m.recurrence_summary_weekly({}, options);
+				case 'monthly':
+					return m.recurrence_summary_monthly({}, options);
+				case 'yearly':
+					return m.recurrence_summary_yearly({}, options);
+			}
+		}
+		switch (rule.frequency) {
+			case 'daily':
+				return m.recurrence_summary_every_days({ count: interval }, options);
+			case 'weekly':
+				return m.recurrence_summary_every_weeks({ count: interval }, options);
+			case 'monthly':
+				return m.recurrence_summary_every_months({ count: interval }, options);
+			case 'yearly':
+				return m.recurrence_summary_every_years({ count: interval }, options);
+		}
+	})();
+	return rule.anchor === 'completion'
+		? m.recurrence_summary_after_completion({ summary }, options)
+		: summary;
 }

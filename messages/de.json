@@ -41,6 +41,30 @@
 	"confirm_delete_list_confirm": "Liste löschen",
 	"confirm_delete_list_message": "Die Liste und alle ihre Aufgaben werden gelöscht. Das kann nicht rückgängig gemacht werden.",
 	"confirm_delete_list_title": "„{name}“ löschen?",
+	"date_add_time": "Uhrzeit hinzufügen",
+	"date_clear": "Entfernen",
+	"date_clear_due": "Fälligkeitsdatum entfernen",
+	"date_clear_planned": "Geplantes Datum entfernen",
+	"date_date": "Datum",
+	"date_due": "Fällig",
+	"date_due_title": "Fällig: {date}",
+	"date_duration": "Dauer",
+	"date_duration_hours": "{hours} Std.",
+	"date_duration_minutes": "{minutes} Min.",
+	"date_field_due": "Fälligkeitsdatum",
+	"date_field_planned": "Geplantes Datum",
+	"date_minutes_unit": "Min.",
+	"date_overdue": "Überfällig",
+	"date_overdue_title": "Überfällig: {date}",
+	"date_planned_after_due": "Das geplante Datum liegt nach dem Fälligkeitsdatum.",
+	"date_planned_label": "Geplant:",
+	"date_planned_title": "Geplant: {date}",
+	"date_planned_title_duration": "Geplant: {date} ({duration})",
+	"date_remove_time": "Uhrzeit entfernen",
+	"date_set_elsewhere": "Festgelegt in {zone}: dort {time}",
+	"date_time": "Uhrzeit",
+	"date_today": "Heute",
+	"date_tomorrow": "Morgen",
 	"default_list_name": "Meine Aufgaben",
 	"error_page_back": "Zurück zu deinen Aufgaben",
 	"error_page_error_tab": "Fehler",
@@ -79,6 +103,107 @@
 	"priority_tasks_high": "Aufgaben mit hoher Priorität",
 	"priority_tasks_low": "Aufgaben mit niedriger Priorität",
 	"priority_tasks_medium": "Aufgaben mit mittlerer Priorität",
+	"recurrence_after": "Nach",
+	"recurrence_after_completion": "Nach Erledigung wiederholen",
+	"recurrence_after_completion_note": "Ab dem Zeitpunkt der Erledigung zählen, nicht ab dem Datum.",
+	"recurrence_daily": "Täglich",
+	"recurrence_end_count": "Nach einer Anzahl von Terminen",
+	"recurrence_end_never": "Nie",
+	"recurrence_end_until": "An einem Datum",
+	"recurrence_ends": "Endet",
+	"recurrence_every": "Alle",
+	"recurrence_hint_completed": "Aufgabe wieder öffnen, um die Wiederholung zu ändern.",
+	"recurrence_hint_needs_date": "Ein geplantes oder fälliges Datum festlegen, um die Aufgabe zu wiederholen.",
+	"recurrence_hint_parent_repeats": "Die übergeordnete Aufgabe wiederholt sich, deshalb können es ihre Unteraufgaben nicht.",
+	"recurrence_hint_subtask_repeats": "Eine Unteraufgabe wiederholt sich, deshalb kann es diese Aufgabe nicht.",
+	"recurrence_label": "Wiederholung",
+	"recurrence_last_date": "Letztes Datum",
+	"recurrence_last_day_note": "In kürzeren Monaten am letzten Tag.",
+	"recurrence_monthly": "Monatlich",
+	"recurrence_off": "Keine Wiederholung",
+	"recurrence_on_day": "Am Tag",
+	"recurrence_on_these_days": "An diesen Wochentagen",
+	"recurrence_summary_after_completion": "{summary}, gezählt ab Erledigung",
+	"recurrence_summary_daily": "Wiederholt sich täglich",
+	"recurrence_summary_every_days": "Wiederholt sich alle {count} Tage",
+	"recurrence_summary_every_months": "Wiederholt sich alle {count} Monate",
+	"recurrence_summary_every_weeks": "Wiederholt sich alle {count} Wochen",
+	"recurrence_summary_every_years": "Wiederholt sich alle {count} Jahre",
+	"recurrence_summary_monthly": "Wiederholt sich monatlich",
+	"recurrence_summary_weekly": "Wiederholt sich wöchentlich",
+	"recurrence_summary_yearly": "Wiederholt sich jährlich",
+	"recurrence_times": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Termin",
+				"countPlural=*": "Termine"
+			}
+		}
+	],
+	"recurrence_unit_days": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Tag",
+				"countPlural=*": "Tage"
+			}
+		}
+	],
+	"recurrence_unit_months": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Monat",
+				"countPlural=*": "Monate"
+			}
+		}
+	],
+	"recurrence_unit_weeks": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Woche",
+				"countPlural=*": "Wochen"
+			}
+		}
+	],
+	"recurrence_unit_years": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Jahr",
+				"countPlural=*": "Jahre"
+			}
+		}
+	],
+	"recurrence_weekly": "Wöchentlich",
+	"recurrence_yearly": "Jährlich",
+	"recurrence_yearly_note": "Jedes Jahr am {date}.",
+	"scope_ask_again": "Erneut fragen",
+	"scope_cancel": "Abbrechen",
+	"scope_delete_subtask": "„{subtask}“ nur in diesem Termin von „{series}“ löschen oder auch in allen folgenden Terminen?",
+	"scope_delete_task": "Nur diesen Termin von „{series}“ löschen, sodass der nächste an seine Stelle tritt, oder diesen und alle folgenden Termine?",
+	"scope_edit_subtask": "„{subtask}“ ist eine Unteraufgabe der wiederholenden Aufgabe „{series}“. Nur in diesem Termin ändern oder in diesem und allen folgenden Terminen?",
+	"scope_edit_task": "„{series}“ wiederholt sich. Nur diesen Termin ändern oder diesen und alle folgenden Termine?",
+	"scope_follows_dates": "Weitere Datumsänderungen folgen in diesem Bereich der getroffenen Wahl.",
+	"scope_follows_details": "Weitere Änderungen an Titel, Details und Priorität folgen in diesem Bereich der getroffenen Wahl.",
+	"scope_follows_subtasks": "Weitere Änderungen an Unteraufgaben folgen in diesem Bereich der getroffenen Wahl.",
+	"scope_future": "Diesen und alle folgenden Termine",
+	"scope_note_dates_future": "Datumsänderungen gelten für diesen und alle folgenden Termine.",
+	"scope_note_dates_occurrence": "Datumsänderungen gelten nur für diesen Termin.",
+	"scope_note_details_future": "Änderungen an Titel, Details und Priorität gelten für diesen und alle folgenden Termine.",
+	"scope_note_details_occurrence": "Änderungen an Titel, Details und Priorität gelten nur für diesen Termin.",
+	"scope_note_subtasks_future": "Änderungen an Unteraufgaben gelten für diesen und alle folgenden Termine.",
+	"scope_note_subtasks_occurrence": "Änderungen an Unteraufgaben gelten nur für diesen Termin.",
+	"scope_occurrence": "Nur diesen Termin",
+	"scope_title_delete": "Wiederholende Aufgabe löschen",
+	"scope_title_edit": "Wiederholende Aufgabe ändern",
 	"settings_calendar_link_accessed_just_now": "gerade eben",
 	"settings_calendar_link_all_lists": "Alle Listen",
 	"settings_calendar_link_all_lists_including_new": "Alle Listen (auch später angelegte)",

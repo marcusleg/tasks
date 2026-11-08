@@ -7,6 +7,7 @@
  * chips appear right after. The clock then ticks every 30 seconds (and when the tab comes back),
  * so labels roll over at midnight and follow a changed system zone.
  */
+import { page } from '$app/state';
 import { Temporal } from 'temporal-polyfill';
 import type { Viewer } from '#lib/domain/date-display.js';
 
@@ -41,9 +42,17 @@ export function startClock(): void {
 	});
 }
 
-/** Now and the browser zone, or `null` before the clock has started (SSR, hydration). */
+/**
+ * The User's date locale (CONTEXT.md → Language): how dates and times are written, and which
+ * language the words "Today" and "Tomorrow" are in. The same on server and browser.
+ */
+export function dateLocale(): string {
+	return (page.data as { dateLocale?: string }).dateLocale ?? 'en';
+}
+
+/** Now, the browser zone and the date locale, or `null` before the clock has started (SSR, hydration). */
 export function viewer(): Viewer | null {
-	return now && { now, timeZone };
+	return now && { now, timeZone, locale: dateLocale() };
 }
 
 /** The browser zone as last seen by the clock; stable between ticks, unlike {@link viewer}. */

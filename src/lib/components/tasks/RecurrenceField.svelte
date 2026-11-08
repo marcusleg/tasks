@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { Temporal } from 'temporal-polyfill';
 	import { ScopedTasks } from '#lib/client/occurrence-scope.svelte.js';
+	import { dateLocale } from '#lib/client/clock.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
 	import {
 		localDate,
@@ -18,6 +19,7 @@
 	} from '#lib/domain/recurrence.js';
 	import { hasDate, recurrenceConflict } from '#lib/domain/recurring-tasks.js';
 	import type { SerializedTask } from '#lib/domain/tasks.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	/**
 	 * The Recurrence editor of the detail panel: how often the Task repeats (every N days, weeks on
@@ -32,24 +34,31 @@
 	// The panel is keyed by Task id; a change can still be saved while it's closing.
 	const taskId = untrack(() => task.id);
 
-	const FREQUENCIES: { value: Frequency; label: string; unit: [string, string] }[] = [
-		{ value: 'daily', label: 'Daily', unit: ['day', 'days'] },
-		{ value: 'weekly', label: 'Weekly', unit: ['week', 'weeks'] },
-		{ value: 'monthly', label: 'Monthly', unit: ['month', 'months'] },
-		{ value: 'yearly', label: 'Yearly', unit: ['year', 'years'] }
-	];
-	const WEEKDAYS: { value: Weekday; short: string; name: string }[] = [
-		{ value: 1, short: 'M', name: 'Monday' },
-		{ value: 2, short: 'T', name: 'Tuesday' },
-		{ value: 3, short: 'W', name: 'Wednesday' },
-		{ value: 4, short: 'T', name: 'Thursday' },
-		{ value: 5, short: 'F', name: 'Friday' },
-		{ value: 6, short: 'S', name: 'Saturday' },
-		{ value: 7, short: 'S', name: 'Sunday' }
-	];
+	const FREQUENCIES: Frequency[] = ['daily', 'weekly', 'monthly', 'yearly'];
+	const frequencyLabel = (frequency: Frequency): string =>
+		({
+			daily: m.recurrence_daily(),
+			weekly: m.recurrence_weekly(),
+			monthly: m.recurrence_monthly(),
+			yearly: m.recurrence_yearly()
+		})[frequency];
+	const unitLabel = (frequency: Frequency, count: number): string =>
+		({
+			daily: m.recurrence_unit_days({ count }),
+			weekly: m.recurrence_unit_weeks({ count }),
+			monthly: m.recurrence_unit_months({ count }),
+			yearly: m.recurrence_unit_years({ count })
+		})[frequency];
+	const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
+	/** A weekday written by the User's date locale: "M" / "Monday", "M" / "Montag". */
+	const weekdayName = (weekday: Weekday, style: 'narrow' | 'long'): string =>
+		new Intl.DateTimeFormat(dateLocale(), { weekday: style, timeZone: 'UTC' }).format(
+			// 2026-11-02 is a Monday.
+			new Date(Date.UTC(2026, 10, 1 + weekday))
+		);
 	const DEFAULT_COUNT = 5;
 
-	// The yearly date is spelled out in the browser's locale, so only after hydration.
+	// The yearly date is spelled out in the User's date locale, so only after hydration.
 	let mounted = $state(false);
 	onMount(() => (mounted = true));
 
@@ -70,21 +79,18 @@
 	);
 	const conflict = $derived(recurrenceConflict(task, family));
 	const hint = $derived.by(() => {
-		if (task.completedAt) return 'Reopen the task to change how it repeats.';
-		if (conflict === 'parent-repeats') return 'The parent task repeats, so its subtasks can’t.';
-		if (conflict === 'subtask-repeats') return 'A subtask repeats, so this task can’t.';
-		if (!driver) return 'Set a planned or due date to repeat this task.';
+		if (task.completedAt) return m.recurrence_hint_completed();
+		if (conflict === 'parent-repeats') return m.recurrence_hint_parent_repeats();
+		if (conflict === 'subtask-repeats') return m.recurrence_hint_subtask_repeats();
+		if (!driver) return m.recurrence_hint_needs_date();
 		return null;
 	});
 	const disabled = $derived(hint !== null);
-	const unit = $derived(
-		rule && FREQUENCIES.find((frequency) => frequency.value === rule.frequency)!.unit
-	);
 	const yearlyOn = $derived(
 		rule?.frequency === 'yearly' && driver && mounted
 			? driver
 					.with({ day: Math.min(rule.monthDay ?? driver.day, driver.daysInMonth) })
-					.toLocaleString(undefined, { day: 'numeric', month: 'long' })
+					.toLocaleString(dateLocale(), { day: 'numeric', month: 'long' })
 			: null
 	);
 
@@ -187,7 +193,7 @@
 </script>
 
 <div class="recurrence">
-	<label class="label" for="{id}-frequency">Repeat</label>
+	<label class="label" for="{id}-frequency">{m.recurrence_label()}</label>
 	<select
 		id="{id}-frequency"
 		class="frequency"
@@ -196,9 +202,9 @@
 		onchange={onFrequencyChange}
 		aria-describedby={hint ? `${id}-hint` : undefined}
 	>
-		<option value="off">Doesn’t repeat</option>
-		{#each FREQUENCIES as frequency (frequency.value)}
-			<option value={frequency.value}>{frequency.label}</option>
+		<option value="off">{m.recurrence_off()}</option>
+		{#each FREQUENCIES as frequency (frequency)}
+			<option value={frequency}>{frequencyLabel(frequency)}</option>
 		{/each}
 	</select>
 
@@ -206,9 +212,9 @@
 		<p id="{id}-hint" class="hint">{hint}</p>
 	{/if}
 
-	{#if rule && unit}
+	{#if rule}
 		<div class="row">
-			<label for="{id}-interval">Every</label>
+			<label for="{id}-interval">{m.recurrence_every()}</label>
 			<input
 				id="{id}-interval"
 				class="number"
@@ -220,27 +226,27 @@
 				value={rule.interval}
 				onchange={onIntervalChange}
 			/>
-			<span>{rule.interval === 1 ? unit[0] : unit[1]}</span>
+			<span>{unitLabel(rule.frequency, rule.interval)}</span>
 		</div>
 
 		{#if rule.frequency === 'weekly'}
-			<div class="weekdays" role="group" aria-label="On these days">
-				{#each WEEKDAYS as weekday (weekday.value)}
+			<div class="weekdays" role="group" aria-label={m.recurrence_on_these_days()}>
+				{#each WEEKDAYS as weekday (weekday)}
 					<button
 						type="button"
 						class="weekday"
-						aria-label={weekday.name}
-						aria-pressed={rule.weekdays?.includes(weekday.value) ?? false}
+						aria-label={weekdayName(weekday, 'long')}
+						aria-pressed={rule.weekdays?.includes(weekday) ?? false}
 						{disabled}
-						onclick={() => toggleWeekday(weekday.value)}
+						onclick={() => toggleWeekday(weekday)}
 					>
-						{weekday.short}
+						{weekdayName(weekday, 'narrow')}
 					</button>
 				{/each}
 			</div>
 		{:else if rule.frequency === 'monthly'}
 			<div class="row">
-				<label for="{id}-month-day">On day</label>
+				<label for="{id}-month-day">{m.recurrence_on_day()}</label>
 				<input
 					id="{id}-month-day"
 					class="number"
@@ -254,23 +260,23 @@
 				/>
 			</div>
 			{#if (rule.monthDay ?? 0) > 28}
-				<p class="note">In shorter months, on the last day.</p>
+				<p class="note">{m.recurrence_last_day_note()}</p>
 			{/if}
 		{:else if yearlyOn}
-			<p class="note">On {yearlyOn} each year.</p>
+			<p class="note">{m.recurrence_yearly_note({ date: yearlyOn })}</p>
 		{/if}
 
 		<div class="row">
-			<label for="{id}-end">Ends</label>
+			<label for="{id}-end">{m.recurrence_ends()}</label>
 			<select id="{id}-end" {disabled} value={rule.end.kind} onchange={onEndKindChange}>
-				<option value="never">Never</option>
-				<option value="until">On a date</option>
-				<option value="count">After a number of times</option>
+				<option value="never">{m.recurrence_end_never()}</option>
+				<option value="until">{m.recurrence_end_until()}</option>
+				<option value="count">{m.recurrence_end_count()}</option>
 			</select>
 		</div>
 		{#if rule.end.kind === 'until'}
 			<div class="row">
-				<label for="{id}-until">Last date</label>
+				<label for="{id}-until">{m.recurrence_last_date()}</label>
 				<input
 					id="{id}-until"
 					type="date"
@@ -281,7 +287,7 @@
 			</div>
 		{:else if rule.end.kind === 'count'}
 			<div class="row">
-				<label for="{id}-count">After</label>
+				<label for="{id}-count">{m.recurrence_after()}</label>
 				<input
 					id="{id}-count"
 					class="number"
@@ -292,7 +298,7 @@
 					value={rule.end.count}
 					onchange={onCountChange}
 				/>
-				<span>{rule.end.count === 1 ? 'time' : 'times'}</span>
+				<span>{m.recurrence_times({ count: rule.end.count })}</span>
 			</div>
 		{/if}
 
@@ -304,8 +310,8 @@
 				onchange={onAnchorChange}
 			/>
 			<span>
-				Repeat after completion
-				<span class="note">Count from when it’s completed, not from its date.</span>
+				{m.recurrence_after_completion()}
+				<span class="note">{m.recurrence_after_completion_note()}</span>
 			</span>
 		</label>
 	{/if}

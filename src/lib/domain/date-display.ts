@@ -21,8 +21,11 @@ export interface Viewer {
 	now: Temporal.Instant;
 	/** IANA time zone the viewer is in. */
 	timeZone: string;
-	/** Locale(s) for formatting; `undefined` uses the runtime's default (the browser locale). */
-	locale?: string | string[];
+	/**
+	 * Locale for formatting and for the words "Today", "Tomorrow" and "Yesterday": the User's date
+	 * locale (CONTEXT.md → Language). `undefined` uses the runtime's default.
+	 */
+	locale?: string;
 }
 
 /** The calendar date a set value falls on for a viewer in `timeZone`. */
@@ -109,7 +112,7 @@ const formatters = new Map<string, Intl.DateTimeFormat>();
 
 /** Cached, since every Task row formats its dates again whenever the clock ticks. */
 function formatter(
-	locale: string | string[] | undefined,
+	locale: string | undefined,
 	options: Intl.DateTimeFormatOptions
 ): Intl.DateTimeFormat {
 	const key = JSON.stringify([locale, options]);
@@ -130,11 +133,28 @@ function epochDate(value: TimedDate): Date {
 	return new Date(instant(value).epochMilliseconds);
 }
 
-const RELATIVE_DAYS: Record<number, string> = { [-1]: 'Yesterday', 0: 'Today', 1: 'Tomorrow' };
+const relativeFormats = new Map<string, Intl.RelativeTimeFormat>();
+
+/**
+ * "Yesterday", "Today" or "Tomorrow" in the viewer's locale, capitalised ("Gestern", "Heute",
+ * "Morgen"), or `null` for any other day. The locale's own words, so no message is needed.
+ */
+function relativeDay(days: number, locale: string | undefined): string | null {
+	if (days < -1 || days > 1) return null;
+	const key = locale ?? '';
+	let format = relativeFormats.get(key);
+	if (!format) {
+		format = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+		relativeFormats.set(key, format);
+	}
+	const word = format.format(days, 'day');
+	return word.charAt(0).toLocaleUpperCase(locale) + word.slice(1);
+}
 
 function compactDay(value: DateOnly | TimedDate, viewer: Viewer): string {
 	const days = daysFromToday(value, viewer);
-	if (days in RELATIVE_DAYS) return RELATIVE_DAYS[days];
+	const relative = relativeDay(days, viewer.locale);
+	if (relative) return relative;
 	const date = viewerDate(value, viewer.timeZone);
 	const options: Intl.DateTimeFormatOptions =
 		days > 1 && days < 7

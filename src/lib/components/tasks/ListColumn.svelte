@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { m } from '#lib/paraglide/messages.js';
 	import { onMount, tick } from 'svelte';
-	import { startClock, viewerTimeZone } from '#lib/client/clock.svelte.js';
+	import { dateLocale, startClock, viewerTimeZone } from '#lib/client/clock.svelte.js';
 	import { CollapsedSubtasks } from '#lib/client/collapsed-subtasks.svelte.js';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { getTaskStore } from '#lib/client/tasks.svelte.js';
@@ -39,13 +39,14 @@
 	// The Sort Mode is a view over Custom Order. Until the clock has started (SSR, hydration) the
 	// zone is UTC, so the markup is stable; the open Tasks re-sort once the browser zone is known.
 	const timeZone = $derived(viewerTimeZone());
-	const open = $derived(sortTasks(tasks.openTasks(list.id), list.sortMode, timeZone));
+	const open = $derived(sortTasks(tasks.openTasks(list.id), list.sortMode, timeZone, dateLocale()));
 	const completed = $derived(tasks.completedGroups(list.id));
 	const openSubtasks = (parentId: string) =>
 		sortTasks(
 			tasks.subtasks(parentId).filter((subtask) => !subtask.completedAt),
 			list.sortMode,
-			timeZone
+			timeZone,
+			dateLocale()
 		);
 
 	const sortLabel = (mode: SortMode): string => {

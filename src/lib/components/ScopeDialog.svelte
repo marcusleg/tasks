@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { ScopePrompt } from '#lib/client/occurrence-scope.svelte.js';
+	import { scopeFollows } from '#lib/client/scope-messages.js';
+	import { m } from '#lib/paraglide/messages.js';
 
 	/**
 	 * The question "This occurrence" or "This and all future" for a change to a recurring Task
@@ -19,19 +21,16 @@
 	});
 
 	const deleting = $derived(question?.action === 'delete');
-	const title = $derived(deleting ? 'Delete a repeating task' : 'Change a repeating task');
+	const title = $derived(deleting ? m.scope_title_delete() : m.scope_title_edit());
 	const message = $derived.by(() => {
 		if (!question) return '';
-		const series = `“${question.seriesTitle}”`;
-		const subtask = question.subtaskTitle && `“${question.subtaskTitle}”`;
+		const { seriesTitle: series, subtaskTitle: subtask } = question;
 		if (deleting) {
 			return subtask
-				? `Delete ${subtask} from this occurrence of ${series} only, or from all future occurrences too?`
-				: `Delete only this occurrence of ${series}, so the next one takes its place, or this and all future occurrences?`;
+				? m.scope_delete_subtask({ subtask, series })
+				: m.scope_delete_task({ series });
 		}
-		return subtask
-			? `${subtask} is a subtask of ${series}, which repeats. Change it in this occurrence only, or in this and all future occurrences?`
-			: `${series} repeats. Change only this occurrence, or this and all future occurrences?`;
+		return subtask ? m.scope_edit_subtask({ subtask, series }) : m.scope_edit_task({ series });
 	});
 </script>
 
@@ -45,11 +44,11 @@
 		<h2 id="{id}-title">{title}</h2>
 		<p id="{id}-message">{message}</p>
 		{#if question.remembersFor}
-			<p class="note">Further {question.remembersFor} in this panel follow your choice.</p>
+			<p class="note">{scopeFollows(question.remembersFor)}</p>
 		{/if}
 		<div class="actions">
 			<button type="button" class="choice" onclick={() => prompt.answer('occurrence')}>
-				This occurrence
+				{m.scope_occurrence()}
 			</button>
 			<button
 				type="button"
@@ -57,9 +56,11 @@
 				class:danger={deleting}
 				onclick={() => prompt.answer('future')}
 			>
-				This and all future
+				{m.scope_future()}
 			</button>
-			<button type="button" class="cancel" onclick={() => prompt.answer(null)}>Cancel</button>
+			<button type="button" class="cancel" onclick={() => prompt.answer(null)}
+				>{m.scope_cancel()}</button
+			>
 		</div>
 	{/if}
 </dialog>
