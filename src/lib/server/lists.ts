@@ -6,7 +6,6 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { generateKeyBetween } from 'fractional-indexing';
 import {
-	DEFAULT_LIST_NAME,
 	parseListName,
 	positionForMove,
 	type List,
@@ -14,6 +13,8 @@ import {
 	type SortMode
 } from '#lib/domain/lists.js';
 import { isId, InvalidInputError } from '#lib/domain/validation.js';
+import { type Language } from '#lib/language.js';
+import { m } from '#lib/paraglide/messages.js';
 import { toList } from './db/mapping.js';
 import { lists, userPreferences } from './db/schema.js';
 import { ownedBy, type UserScope } from './scope.js';
@@ -115,11 +116,11 @@ export function deleteList(scope: UserScope, id: string): boolean {
 }
 
 /**
- * First-time setup for a User: creates their preferences and the "My Tasks" List. Idempotent:
- * once the preferences row exists nothing happens, so a User who deletes every List isn't given
- * a new "My Tasks". Returns whether the User was set up just now.
+ * First-time setup for a User: creates their preferences and their first List, named in `language`
+ * (the request's Language). Idempotent: once the preferences row exists nothing happens, so a User
+ * who deletes every List isn't given a new one. Returns whether the User was set up just now.
  */
-export function ensureUserSetUp(scope: UserScope): boolean {
+export function ensureUserSetUp(scope: UserScope, language: Language): boolean {
 	const existing = scope.db
 		.select({ userId: userPreferences.userId })
 		.from(userPreferences)
@@ -146,7 +147,7 @@ export function ensureUserSetUp(scope: UserScope): boolean {
 			tx.insert(lists)
 				.values({
 					userId: scope.userId,
-					name: DEFAULT_LIST_NAME,
+					name: m.default_list_name({}, { locale: language }),
 					position: generateKeyBetween(null, null)
 				})
 				.run();

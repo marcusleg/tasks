@@ -25,6 +25,31 @@ test('a new User sees "My Tasks"', async ({ page }) => {
 	await expect(sidebar(page).getByRole('link')).toHaveText(['My Tasks', 'Priority', 'Settings']);
 });
 
+test.describe('a German browser', () => {
+	test.use({ locale: 'de-DE' });
+
+	test('a new User sees "Meine Aufgaben"', async ({ page }) => {
+		await loginAs(page);
+		// The sidebar's accessible name is in German too (`sidebar()` expects English).
+		const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+
+		await expect(nav.getByRole('link', { name: 'Meine Aufgaben' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+		await expect(page.getByRole('heading', { name: 'Meine Aufgaben', level: 2 })).toBeVisible();
+		await expect(column(page, 'Meine Aufgaben')).toBeVisible();
+
+		// Signing in again doesn't create a second one.
+		await page.reload();
+		await expect(nav.getByRole('link')).toHaveText([
+			'Meine Aufgaben',
+			'Priorität',
+			'Einstellungen'
+		]);
+	});
+});
+
 test('create, rename and delete Lists', async ({ page }) => {
 	await loginAs(page);
 

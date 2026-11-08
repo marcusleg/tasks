@@ -10,6 +10,7 @@
 	"auth_not_allowed_text": "Dein Konto gehört nicht zur Gruppe, die diese App nutzen darf, deshalb ist keine Anmeldung möglich. Frag die Administration, ob sie dich zur Gruppe hinzufügt, oder melde dich mit einem anderen Konto an.",
 	"auth_not_allowed_title": "Kein Zugriff",
 	"auth_sign_in": "Anmelden",
+	"default_list_name": "Meine Aufgaben",
 	"error_page_back": "Zurück zu deinen Aufgaben",
 	"error_page_error_tab": "Fehler",
 	"error_page_error_text": "Bitte gleich noch einmal versuchen.",
