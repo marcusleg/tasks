@@ -10,6 +10,10 @@ A minimalist, self-hosted task manager in the spirit of Google Tasks. Each User 
 A person who signs in through the configured identity provider. A User owns their Lists outright; nothing is shared between Users.
 _Avoid_: Account, member
 
+**Language**:
+The language a User sees the app in: detected from their browser, or chosen by them and then the same on every device. Dates and times are written the way that Language writes them. Things a User has created, like the first List, keep the name they got, whatever the Language later becomes. A Calendar Link speaks its owner's chosen Language, otherwise English. The app is called Tasks in every Language.
+_Avoid_: Locale, translation
+
 **List**:
 A named, ordered collection of Tasks owned by one User.
 _Avoid_: To-Do list, project, folder, board
