@@ -11,6 +11,11 @@ export const API_ERROR_CODES = [
 	'list_not_found',
 	'task_not_found',
 	'task_or_list_not_found',
+	// Stale state, e.g. a parent completed elsewhere: the Task can't be added or moved there, or
+	// can't repeat.
+	'move_not_allowed',
+	'parent_unavailable',
+	'recurrence_not_allowed',
 	// A Calendar Link names a List that is gone.
 	'calendar_link_list_not_found',
 	// Clearing the last date of a recurring Task.

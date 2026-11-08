@@ -3,6 +3,7 @@
  * through here; pages get their initial data from `load` functions.
  */
 import { resolve } from '$app/paths';
+import { m } from '#lib/paraglide/messages.js';
 import { apiErrorMessage } from './api-errors.js';
 import type { SerializedCalendarLink } from '#lib/domain/calendar-links.js';
 import type { LanguagePreference } from '#lib/language.js';
@@ -56,7 +57,7 @@ async function send<T>(method: string, path: string, body?: object): Promise<T> 
 		// The session ended (expired, or signed out elsewhere): sign in again and come back.
 		const returnTo = location.pathname + location.search;
 		location.assign(`${resolve('/auth/login')}?returnTo=${encodeURIComponent(returnTo)}`);
-		throw new ApiError(401, 'Not signed in');
+		throw new ApiError(401, m.api_error_not_signed_in());
 	}
 	if (!response.ok) {
 		const body: { message?: string; code?: string } | null = await response
@@ -64,7 +65,9 @@ async function send<T>(method: string, path: string, body?: object): Promise<T> 
 			.catch(() => null);
 		throw new ApiError(
 			response.status,
-			apiErrorMessage(body?.code) ?? body?.message ?? `Request failed (${response.status})`,
+			apiErrorMessage(body?.code) ??
+				body?.message ??
+				m.api_error_request_failed({ status: response.status }),
 			body?.code
 		);
 	}

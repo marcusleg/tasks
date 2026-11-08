@@ -1,8 +1,8 @@
 /**
  * Helpers for the JSON endpoints under `/api/` (see ADR 0003). Endpoints read a JSON body, call
  * the data-access layer with the User's scope, and answer with JSON. Errors are thrown with
- * SvelteKit's `error()`, so the browser gets `{ message }` with the status, and `code` too for the errors a User can
- * run into (`#lib/domain/error-codes`).
+ * SvelteKit's `error()`, so the browser gets `{ message }` with the status, and `code` too for the
+ * errors a User can run into (`#lib/domain/error-codes`).
  */
 import { error } from '@sveltejs/kit';
 import type { ApiErrorCode } from '#lib/domain/error-codes.js';

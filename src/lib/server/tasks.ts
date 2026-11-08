@@ -156,7 +156,7 @@ export function createTask(
 		const parent = getTask(scope, parentId);
 		if (!parent || parent.listId !== input.listId) return undefined;
 		const problem = nestingError(parent);
-		if (problem) throw new InvalidInputError(problem);
+		if (problem) throw new InvalidInputError(problem, 'parent_unavailable');
 	}
 
 	return scope.db.transaction(() => {
@@ -334,9 +334,11 @@ function recurrenceColumns(
 	if (patch.recurrence === undefined) return {};
 	if (patch.recurrence === null) return { recurrence: null, seriesId: null, seriesTemplate: null };
 	// The next Occurrence is created on completion, so a Completed Task can't start a series.
-	if (task.completedAt) throw new InvalidInputError(COMPLETED_CANT_START_RECURRENCE);
+	if (task.completedAt)
+		throw new InvalidInputError(COMPLETED_CANT_START_RECURRENCE, 'recurrence_not_allowed');
 	const conflict = recurrenceConflict(task, familyOf(scope, task));
-	if (conflict) throw new InvalidInputError(RECURRENCE_CONFLICT_MESSAGES[conflict]);
+	if (conflict)
+		throw new InvalidInputError(RECURRENCE_CONFLICT_MESSAGES[conflict], 'recurrence_not_allowed');
 	const newSeries = task.recurrence === null || task.seriesId === null;
 	// A moved Occurrence's own dates aren't on the rule; the template's are.
 	const anchor =

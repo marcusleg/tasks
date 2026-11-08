@@ -77,7 +77,7 @@ export function moveError(tasks: readonly Movable[], id: string, move: TaskMove)
 /** The changes that carry out `move` for Task `id`. Throws `InvalidInputError` if it isn't allowed. */
 export function moveChanges(tasks: readonly Movable[], id: string, move: TaskMove): MoveChange[] {
 	const problem = moveError(tasks, id, move);
-	if (problem) throw new InvalidInputError(problem);
+	if (problem) throw new InvalidInputError(problem, 'move_not_allowed');
 	const siblings = tasks
 		.filter((t) => t.id !== id && t.listId === move.listId && t.parentId === move.parentId)
 		.sort(byCustomOrder);
