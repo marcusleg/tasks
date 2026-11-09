@@ -19,8 +19,12 @@
 	--accent-orange: #fd971f;
 	--accent-cyan: #66d9ef;
 	--accent-green: #a6e22e;
-	/* The rule under the header wordmark (marcusleg.de's divider gradient). */
-	--brand-rule: linear-gradient(90deg, #ae81ff, #fd971f, #f92672);
+	/*
+	 * The rule under the header wordmark: orange → pink → purple, the app icon's gradient. Only
+	 * neighbouring hues blend (purple straight into orange would pass through a greyish mauve). The
+	 * light themes use the same raw pigments, since the rule is decoration, not text.
+	 */
+	--brand-rule: linear-gradient(90deg, #fd971f, #f92672, #ae81ff);
 	/* Text colour on top of a solid accent background. */
 	--on-accent: #121310;
 	--overlay: rgb(0 0 0 / 0.5);
@@ -56,7 +60,7 @@
 	--accent-orange: #a35d00;
 	--accent-cyan: #00798a;
 	--accent-green: #477210;
-	--brand-rule: linear-gradient(90deg, #a56fff, #cb7500, #ff0070);
+	--brand-rule: linear-gradient(90deg, #fd971f, #f92672, #ae81ff);
 	--on-accent: #ffffff;
 	--overlay: rgb(0 0 0 / 0.35);
 }
@@ -76,7 +80,7 @@
 		--accent-orange: #a35d00;
 		--accent-cyan: #00798a;
 		--accent-green: #477210;
-		--brand-rule: linear-gradient(90deg, #a56fff, #cb7500, #ff0070);
+		--brand-rule: linear-gradient(90deg, #fd971f, #f92672, #ae81ff);
 		--on-accent: #ffffff;
 		--overlay: rgb(0 0 0 / 0.35);
 	}
