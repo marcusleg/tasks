@@ -1,5 +1,6 @@
 import { expect, test } from './fixtures';
 import { loginAs } from './auth';
+import { waitForHydration } from './hydration';
 import { addTask, column, detailPanel, listOption, openTitles, saved } from './lists-tasks';
 
 test.beforeEach(async ({ page }) => {
@@ -18,6 +19,28 @@ test('add Tasks: Enter adds at the top and keeps the field ready', async ({ page
 	await expect(openTitles(page, 'My Tasks')).toHaveText(['Bread', 'Eggs', 'Milk']);
 	await page.reload();
 	await expect(openTitles(page, 'My Tasks')).toHaveText(['Bread', 'Eggs', 'Milk']);
+});
+
+test('add Tasks: clicking elsewhere adds what was typed; Escape first adds nothing', async ({
+	page
+}) => {
+	await waitForHydration(page);
+	const input = page.getByRole('textbox', { name: 'Add a task' });
+	const heading = column(page, 'My Tasks').getByRole('heading', { name: 'My Tasks', level: 2 });
+
+	await saved(page, async () => {
+		await input.fill('Milk');
+		await heading.click();
+	});
+	await expect(openTitles(page, 'My Tasks')).toHaveText(['Milk']);
+	await expect(input).toHaveValue('');
+
+	await input.fill('Eggs');
+	await input.press('Escape');
+	await heading.click();
+	await expect(input).toHaveValue('');
+	await page.reload();
+	await expect(openTitles(page, 'My Tasks')).toHaveText(['Milk']);
 });
 
 test('edit Title and Description in the detail panel', async ({ page }) => {
