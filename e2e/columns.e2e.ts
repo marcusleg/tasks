@@ -110,7 +110,7 @@ test('dragging a List in the sidebar reorders it', async ({ page }) => {
 	await expect(listNames(page)).toHaveText(['Groceries', 'My Tasks']);
 });
 
-test('on a phone one List shows at a time and the switcher changes it', async ({ page }) => {
+test('on a phone one List shows at a time and the menu changes it', async ({ page }) => {
 	await loginAs(page);
 	await createList(page, 'Groceries');
 	await page.setViewportSize({ width: 360, height: 740 });
@@ -120,9 +120,8 @@ test('on a phone one List shows at a time and the switcher changes it', async ({
 	await expect(column(page, 'Groceries')).toBeVisible();
 	await expect(column(page, 'My Tasks')).toBeHidden();
 
-	const switcher = page.getByRole('combobox', { name: 'List' });
-	await expect(switcher).toHaveValue(/.+/);
-	await switcher.selectOption({ label: 'My Tasks' });
+	await page.getByRole('button', { name: 'Menu', exact: true }).click();
+	await sidebar(page).getByRole('link', { name: 'My Tasks' }).click();
 	await expect(page).toHaveURL(/\/lists\//);
 	await expect(column(page, 'My Tasks')).toBeVisible();
 	await expect(column(page, 'Groceries')).toBeHidden();
@@ -136,10 +135,4 @@ test('on a phone one List shows at a time and the switcher changes it', async ({
 		() => document.documentElement.scrollWidth - document.documentElement.clientWidth
 	);
 	expect(overflow).toBeLessThanOrEqual(0);
-});
-
-test('the switcher is hidden on desktop', async ({ page }) => {
-	await page.setViewportSize({ width: 1280, height: 800 });
-	await loginAs(page);
-	await expect(page.getByRole('combobox', { name: 'List' })).toBeHidden();
 });
