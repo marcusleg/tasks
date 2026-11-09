@@ -326,7 +326,6 @@
 		gap: var(--space-1);
 		height: 2.75rem;
 		padding: 0 var(--space-2);
-		margin-right: calc(-1 * var(--space-1));
 		background: none;
 		border: none;
 		border-radius: var(--radius-md);

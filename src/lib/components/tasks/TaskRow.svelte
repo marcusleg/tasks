@@ -113,7 +113,7 @@
 		display: flex;
 		align-items: flex-start;
 		gap: var(--space-1);
-		padding: 0 var(--space-2) 0 var(--space-1);
+		padding: 0 var(--space-1);
 		border-radius: var(--radius-md);
 	}
 

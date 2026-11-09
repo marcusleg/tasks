@@ -104,6 +104,8 @@
 <style>
 	.menu {
 		position: relative;
+		/* Lines its icon up with the rows' trailing icons, as far in as the leading ones. */
+		margin-right: calc(-1 * var(--space-1));
 	}
 
 	.trigger {
