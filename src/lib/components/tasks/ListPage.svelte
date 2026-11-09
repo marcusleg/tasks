@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { m } from '#lib/paraglide/messages.js';
-	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -19,7 +18,7 @@
 	/**
 	 * The main page: the visible Lists side by side as columns (plus the focused List, even if it
 	 * is hidden) and, when `?task=` is set, that Task's detail panel. On narrow screens only the
-	 * focused List is shown, with a switcher on top. With `scrollToFocus` (the `/lists/[id]` deep
+	 * focused List is shown; the menu switches between Lists. With `scrollToFocus` (the `/lists/[id]` deep
 	 * link) the focused column is scrolled into view and focused.
 	 */
 	let {
@@ -72,11 +71,6 @@
 		void goto(resolve('/'), { invalidate: [TASKS_DEPENDENCY] });
 	}
 
-	function switchTo(event: Event) {
-		const id = (event.currentTarget as HTMLSelectElement).value;
-		void goto(resolve('/lists/[id]', { id }));
-	}
-
 	$effect(() => {
 		const id = focusId;
 		if (!scrollToFocus) return;
@@ -92,15 +86,6 @@
 <svelte:head>
 	<title>{current.name} · Tasks</title>
 </svelte:head>
-
-<div class="switcher">
-	<label class="visually-hidden" for="list-switcher">{m.list_switcher()}</label>
-	<select id="list-switcher" value={focus.id} disabled={!hydration.done} onchange={switchTo}>
-		{#each lists.all as list (list.id)}
-			<option value={list.id}>{list.name}</option>
-		{/each}
-	</select>
-</div>
 
 <div class="columns" class:with-panel={selected}>
 	{#each columns as list (list.id)}
@@ -235,20 +220,6 @@
 		user-select: none;
 	}
 
-	.switcher {
-		display: none;
-		margin-bottom: var(--space-3);
-	}
-
-	.switcher select {
-		width: 100%;
-		padding: var(--space-2) var(--space-3);
-		background: var(--surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		font-weight: 700;
-	}
-
 	.columns {
 		display: flex;
 		align-items: flex-start;
@@ -278,10 +249,6 @@
 
 	/* One List at a time on narrow screens. */
 	@media (max-width: 768px) {
-		.switcher {
-			display: block;
-		}
-
 		.slot {
 			display: none;
 			width: 100%;
