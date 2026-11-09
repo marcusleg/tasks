@@ -17,6 +17,13 @@ export async function saved(page: Page, action: () => Promise<unknown>): Promise
 
 export const sidebar = (page: Page): Locator => page.getByRole('navigation', { name: 'Main' });
 
+/** On a phone: picks the List with this name in the menu. */
+export async function switchToList(page: Page, name: string): Promise<void> {
+	await page.getByRole('button', { name: 'Menu', exact: true }).click();
+	await sidebar(page).getByRole('link', { name, exact: true }).click();
+	await expect(column(page, name)).toBeVisible();
+}
+
 /** The column of the List with this name. */
 export const column = (page: Page, name: string): Locator =>
 	page.getByRole('region', { name, exact: true });
