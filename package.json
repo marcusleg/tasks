@@ -32,13 +32,13 @@
 		"drizzle-orm": "^0.45.4",
 		"fractional-indexing": "^4.0.0",
 		"openid-client": "^6.8.9",
-		"temporal-polyfill": "^1.0.6"
+		"temporal-polyfill": "^1.0.8"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@inlang/paraglide-js": "^3.1.0",
+		"@inlang/paraglide-js": "^3.2.0",
 		"@inlang/plugin-message-format": "^4.6.0",
-		"@playwright/test": "^1.64.1",
+		"@playwright/test": "^1.65.0",
 		"@sveltejs/adapter-node": "^6.0.1",
 		"@sveltejs/kit": "^3.1.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
@@ -47,7 +47,7 @@
 		"drizzle-kit": "^0.31.11",
 		"eslint": "^10.14.0",
 		"eslint-config-prettier": "^10.1.8",
-		"eslint-plugin-svelte": "^3.23.1",
+		"eslint-plugin-svelte": "^3.24.0",
 		"globals": "^17.14.0",
 		"ical.js": "^2.2.1",
 		"oauth2-mock-server": "^9.3.0",
@@ -58,7 +58,7 @@
 		"svelte-check": "^4.7.8",
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.72.1",
-		"vite": "^8.3.5",
+		"vite": "^8.3.6",
 		"vitest": "^5.1.0"
 	},
 	"imports": {
