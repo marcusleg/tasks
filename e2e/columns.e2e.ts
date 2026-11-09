@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures';
 import { loginAs } from './auth';
-import { column, createList, saved, sidebar } from './lists-tasks';
+import { column, createList, saved, sidebar, switchToList } from './lists-tasks';
 
 const listNames = (page: import('@playwright/test').Page) =>
 	sidebar(page).locator('li[data-list-id] a');
@@ -120,8 +120,7 @@ test('on a phone one List shows at a time and the menu changes it', async ({ pag
 	await expect(column(page, 'Groceries')).toBeVisible();
 	await expect(column(page, 'My Tasks')).toBeHidden();
 
-	await page.getByRole('button', { name: 'Menu', exact: true }).click();
-	await sidebar(page).getByRole('link', { name: 'My Tasks' }).click();
+	await switchToList(page, 'My Tasks');
 	await expect(page).toHaveURL(/\/lists\//);
 	await expect(column(page, 'My Tasks')).toBeVisible();
 	await expect(column(page, 'Groceries')).toBeHidden();

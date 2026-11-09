@@ -9,7 +9,8 @@ import {
 	detailPanel,
 	openTitles,
 	saved,
-	subtaskTitles
+	subtaskTitles,
+	switchToList
 } from './lists-tasks';
 
 const LIST = 'My Tasks';
@@ -209,8 +210,7 @@ test('drag a Task to another List’s column: its Subtasks come along', async ({
 test('"Move to List" in the detail panel works on a phone', async ({ page }) => {
 	await createList(page, 'Work');
 	await page.setViewportSize({ width: 360, height: 740 });
-	await page.getByRole('combobox', { name: 'List' }).selectOption({ label: LIST });
-	await expect(column(page, LIST)).toBeVisible();
+	await switchToList(page, LIST);
 	await addTasks(page, 'Party');
 	await addSubtasks(page, 'Party', 'Cake');
 
@@ -226,7 +226,7 @@ test('"Move to List" in the detail panel works on a phone', async ({ page }) => 
 	await expect(detailPanel(page)).toBeHidden();
 	await expect(column(page, LIST).getByText('No tasks yet')).toBeVisible();
 
-	await page.getByRole('combobox', { name: 'List' }).selectOption({ label: 'Work' });
+	await switchToList(page, 'Work');
 	await expect(openTitles(page, 'Work')).toHaveText(['Party']);
 	await expect(subtaskTitles(page, 'Work', 'Party')).toHaveText(['Cake']);
 });
