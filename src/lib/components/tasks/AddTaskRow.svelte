@@ -8,7 +8,7 @@
 
 	/**
 	 * "Add a task": Enter adds the Task at the top of the List and keeps the field ready for the
-	 * next one. With `parentId` it adds Subtasks instead, at the bottom of the parent's Subtasks;
+	 * next one; leaving the field adds it too. With `parentId` it adds Subtasks instead, at the bottom of the parent's Subtasks;
 	 * for a recurring parent `ScopedTasks` asks first (if cancelled, the title stays). Pass the
 	 * detail panel's `scopes` so its remembered answers apply.
 	 */
@@ -31,12 +31,31 @@
 		navigating.to !== null && navigating.to.url.pathname !== navigating.from?.url.pathname
 	);
 
-	async function submit(event: SubmitEvent) {
-		event.preventDefault();
+	// While an add waits on the scope prompt: the prompt takes focus, and that blur mustn't add
+	// the same Title a second time.
+	let pending = false;
+
+	async function add() {
 		const adding = title;
-		if (!adding.trim()) return;
-		const id = await scopes.add(listId, adding, parentId);
-		if (id !== null && title === adding) title = '';
+		if (pending || !adding.trim()) return;
+		pending = true;
+		try {
+			const id = await scopes.add(listId, adding, parentId);
+			if (id !== null && title === adding) title = '';
+		} finally {
+			pending = false;
+		}
+	}
+
+	function submit(event: SubmitEvent) {
+		event.preventDefault();
+		void add();
+	}
+
+	// Leaving the field adds what was typed, but switching to another window doesn't: the field
+	// keeps its focus and Title for when the User comes back.
+	function onblur() {
+		if (document.hasFocus()) void add();
 	}
 
 	function onkeydown(event: KeyboardEvent) {
@@ -64,6 +83,7 @@
 		id="{id}-title"
 		bind:value={title}
 		{onkeydown}
+		{onblur}
 		placeholder={label}
 		maxlength={MAX_TITLE_LENGTH}
 		disabled={!hydration.done || leaving}
