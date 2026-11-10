@@ -1,6 +1,6 @@
 # Tasks
 
-A minimalist, self-hosted task manager in the spirit of Google Tasks. Each User keeps private Lists of Tasks, signs in through an OIDC provider, and can subscribe to their dated Tasks from an external calendar. See [`CONTEXT.md`](CONTEXT.md) for the domain language and [`docs/adr/`](docs/adr/) for the architectural decisions.
+A minimalist, self-hosted to-do app in the spirit of Google Tasks. Each User keeps private Lists of Tasks, signs in through an OIDC provider, and can subscribe to their dated Tasks from an external calendar. See [`CONTEXT.md`](CONTEXT.md) for the domain language and [`docs/adr/`](docs/adr/) for the architectural decisions.
 
 Built with SvelteKit (Svelte 5, TypeScript) on the Node adapter, with SQLite through Drizzle ORM.
 
