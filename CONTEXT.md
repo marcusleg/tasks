@@ -1,6 +1,6 @@
 # Tasks
 
-A minimalist, self-hosted task manager in the spirit of Google Tasks. Each User keeps private Lists of Tasks and can see their dated Tasks in an external calendar.
+A minimalist, self-hosted to-do app in the spirit of Google Tasks. Each User keeps private Lists of Tasks and can see their dated Tasks in an external calendar.
 
 ## Language
 
