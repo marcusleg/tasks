@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { m } from '#lib/paraglide/messages.js';
-	import { onDestroy, tick, untrack } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getListStore } from '#lib/client/lists.svelte.js';
@@ -36,22 +36,12 @@
 	// The columns scroll sideways inside <main> (AppShell).
 	const drag = setTaskDrag(new TaskDrag(store, lists, () => document.getElementById('main')));
 
-	// The id, not `focus` itself: reloaded page data brings a new object for the same List, and that
-	// is no reason to take the keyboard focus away from whatever the User is doing.
 	const focusId = $derived(focus?.id);
-	// A link to a Hidden List shows its column until the User changes that List's visibility.
-	const reveal = (id: string | undefined) => (id ? { id, visible: lists.get(id)?.visible } : null);
-	let revealed = $state(untrack(() => reveal(focusId)));
-	$effect.pre(() => {
-		const id = focusId;
-		revealed = untrack(() => reveal(id));
-	});
 
 	// The Lists as edited in this browser (renamed, hidden, reordered), falling back to the page data.
+	// A link to a Hidden List shows its column until the User shows it, which reloads the page data.
 	const columns = $derived(
-		lists.all.filter(
-			(list) => list.visible || (revealed?.id === list.id && revealed.visible === list.visible)
-		)
+		lists.all.filter((list) => list.visible || (list.id === focusId && focus?.visible === false))
 	);
 	const current = $derived(focus && (lists.get(focus.id) ?? focus));
 	const selected = $derived(store.get(openTaskId()));
@@ -68,18 +58,11 @@
 		void goto(resolve('/'), { invalidate: [TASKS_DEPENDENCY] });
 	}
 
-	// Scroll to the focused List when the page opens on its link, when the User follows a link to
-	// another List, and when they pick the same List again (on a phone, to get back to it in the
-	// stack). Opening or closing a Task only changes the query, which is no reason to scroll.
+	// After navigating, not as an effect: SvelteKit scrolls a new page to the top once it has
+	// rendered. Opening or closing a Task only changes the query, which is no reason to scroll.
 	afterNavigate(({ from, to }) => {
 		const id = focusId;
-		if (
-			!id ||
-			(from && from.url.pathname === to?.url.pathname && from.url.search !== to.url.search)
-		)
-			return;
-		// Picking a List again after hiding it shows it again.
-		revealed = reveal(id);
+		if (!id || from?.url.pathname === to?.url.pathname) return;
 		void tick().then(() => {
 			const el = document.querySelector<HTMLElement>(`[data-column="${id}"]`);
 			if (!el) return;
@@ -261,7 +244,6 @@
 	@media (max-width: 768px) {
 		.columns {
 			flex-direction: column;
-			align-items: stretch;
 			gap: var(--space-6);
 		}
 

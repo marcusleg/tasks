@@ -19,7 +19,7 @@
 	] as const;
 
 	/** The List the page links to (`/lists/[id]`); none on `/`. */
-	const shownListId = $derived((page.data.list as { id: string } | null | undefined)?.id);
+	const shownListId = $derived(page.params.id);
 
 	let announcement = $state('');
 	let listEl = $state<HTMLUListElement>();

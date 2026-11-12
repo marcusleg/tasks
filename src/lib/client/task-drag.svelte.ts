@@ -245,25 +245,16 @@ export class TaskDrag {
 			const bounds = scroller.getBoundingClientRect();
 			if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return null;
 		}
-		const columns = [...document.querySelectorAll<HTMLElement>('[data-column]')].filter(
-			(el) => el.getClientRects().length > 0
-		);
 		const gap = (at: number, from: number, to: number) =>
 			at < from ? from - at : at > to ? at - to : 0;
-		let best: HTMLElement | null = null;
-		let bestDx = Infinity;
-		let bestDy = Infinity;
-		for (const el of columns) {
-			const rect = el.getBoundingClientRect();
-			const dx = gap(x, rect.left, rect.right);
-			const dy = gap(y, rect.top, rect.bottom);
-			if (dx < bestDx || (dx === bestDx && dy < bestDy)) {
-				best = el;
-				bestDx = dx;
-				bestDy = dy;
-			}
-		}
-		return best as (HTMLElement & { dataset: { column: string } }) | null;
+		const [nearest] = [...document.querySelectorAll<HTMLElement>('[data-column]')]
+			.filter((el) => el.getClientRects().length > 0)
+			.map((el) => {
+				const rect = el.getBoundingClientRect();
+				return { el, dx: gap(x, rect.left, rect.right), dy: gap(y, rect.top, rect.bottom) };
+			})
+			.sort((a, b) => a.dx - b.dx || a.dy - b.dy);
+		return (nearest?.el ?? null) as (HTMLElement & { dataset: { column: string } }) | null;
 	}
 
 	/** The visible open rows of a column, without the dragged Task and its Subtasks. */
