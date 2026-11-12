@@ -15,5 +15,5 @@ export const load: PageServerLoad = ({ locals, params, depends }) => {
 	const list = getList(scope, params.id);
 	if (!list) error(404, 'List not found');
 
-	return loadColumns(scope, list.id);
+	return loadColumns(scope, list);
 };
