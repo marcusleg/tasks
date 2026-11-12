@@ -18,7 +18,7 @@
 		{ href: '/settings', label: m.shell_sidebar_settings }
 	] as const;
 
-	/** The List shown in the main area (`/` shows the last-viewed one). */
+	/** The List the page links to (`/lists/[id]`); none on `/`. */
 	const shownListId = $derived((page.data.list as { id: string } | null | undefined)?.id);
 
 	let announcement = $state('');
@@ -126,8 +126,7 @@
 <nav aria-label={m.shell_sidebar_main_nav()}>
 	<section aria-labelledby="sidebar-lists-heading">
 		<h2 id="sidebar-lists-heading">{m.shell_sidebar_lists()}</h2>
-		<!-- Preload on tap, not hover: loading a List marks it as last viewed. -->
-		<ul bind:this={listEl} class="lists" data-sveltekit-preload-data="tap">
+		<ul bind:this={listEl} class="lists">
 			{#each lists.all as list, index (list.id)}
 				{@const others = lists.all.filter((l) => l.id !== drag?.id)}
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->

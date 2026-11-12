@@ -21,7 +21,8 @@ export const sidebar = (page: Page): Locator => page.getByRole('navigation', { n
 export async function switchToList(page: Page, name: string): Promise<void> {
 	await page.getByRole('button', { name: 'Menu', exact: true }).click();
 	await sidebar(page).getByRole('link', { name, exact: true }).click();
-	await expect(column(page, name)).toBeVisible();
+	// Visible Lists are on the page already; wait until this one is the one it links to.
+	await expectFocused(page, name);
 }
 
 /** The column of the List with this name. */
@@ -42,6 +43,15 @@ export async function createList(page: Page, name: string): Promise<void> {
 	await expectFocused(page, name);
 }
 
+/**
+ * The List the page is about: the one a `/lists/[id]` page links to, or the first column on `/`
+ * (which links to none).
+ */
+export const currentColumn = (page: Page): Locator =>
+	new URL(page.url()).pathname.startsWith('/lists/')
+		? page.locator('[data-column][data-focused]')
+		: page.locator('[data-column]').first();
+
 /** Waits until the List with this name is the one the page is about (the focused column). */
 export async function expectFocused(page: Page, name: string): Promise<void> {
 	await expect(
@@ -52,11 +62,7 @@ export async function expectFocused(page: Page, name: string): Promise<void> {
 export async function addTask(page: Page, title: string): Promise<void> {
 	await waitForHydration(page);
 	await saved(page, async () => {
-		// The focused List is the one the page is about (the others sit beside it as columns).
-		await page
-			.locator('[data-column][data-focused]')
-			.getByRole('textbox', { name: 'Add a task' })
-			.fill(title);
+		await currentColumn(page).getByRole('textbox', { name: 'Add a task' }).fill(title);
 		await page.keyboard.press('Enter');
 	});
 }

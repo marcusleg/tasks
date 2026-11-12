@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { m } from '#lib/paraglide/messages.js';
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { setTaskDrag, TaskDrag } from '#lib/client/task-drag.svelte.js';
@@ -16,16 +16,12 @@
 	import TaskDetail from './TaskDetail.svelte';
 
 	/**
-	 * The main page: the visible Lists side by side as columns (plus the focused List, even if it
-	 * is hidden) and, when `?task=` is set, that Task's detail panel. On narrow screens only the
-	 * focused List is shown; the menu switches between Lists. With `scrollToFocus` (the `/lists/[id]` deep
-	 * link) the focused column is scrolled into view and focused.
+	 * The main page: the visible Lists as columns, side by side on wide screens and stacked on narrow
+	 * ones, and, when `?task=` is set, that Task's detail panel. With a `focus` (the `/lists/[id]`
+	 * link) that List's column shows even if it is a Hidden List, and is scrolled into view and
+	 * focused; `/` has none.
 	 */
-	let {
-		focus,
-		tasks,
-		scrollToFocus = false
-	}: { focus: SerializedList; tasks: SerializedTask[]; scrollToFocus?: boolean } = $props();
+	let { focus, tasks }: { focus: SerializedList | null; tasks: SerializedTask[] } = $props();
 
 	const lists = getListStore();
 	const store = setTaskStore(
@@ -40,24 +36,25 @@
 	// The columns scroll sideways inside <main> (AppShell).
 	const drag = setTaskDrag(new TaskDrag(store, lists, () => document.getElementById('main')));
 
-	// The Lists as edited in this browser (renamed, hidden, reordered), falling back to the page data.
-	const columns = $derived(lists.all.filter((list) => list.visible || list.id === focus.id));
-	const current = $derived(lists.get(focus.id) ?? focus);
-	const selected = $derived(store.get(openTaskId()));
-
-	// A deep link to a hidden List shows its column on wide screens, until the User changes that
-	// List's visibility; on `/` a hidden last-viewed List is only shown on narrow screens.
-	const reveal = (id: string) => (scrollToFocus ? { id, visible: lists.get(id)?.visible } : null);
 	// The id, not `focus` itself: reloaded page data brings a new object for the same List, and that
 	// is no reason to take the keyboard focus away from whatever the User is doing.
-	const focusId = $derived(focus.id);
+	const focusId = $derived(focus?.id);
+	// A link to a Hidden List shows its column until the User changes that List's visibility.
+	const reveal = (id: string | undefined) => (id ? { id, visible: lists.get(id)?.visible } : null);
 	let revealed = $state(untrack(() => reveal(focusId)));
 	$effect.pre(() => {
 		const id = focusId;
 		revealed = untrack(() => reveal(id));
 	});
-	const wideColumn = (list: SerializedList) =>
-		list.visible || (revealed?.id === list.id && revealed.visible === list.visible);
+
+	// The Lists as edited in this browser (renamed, hidden, reordered), falling back to the page data.
+	const columns = $derived(
+		lists.all.filter(
+			(list) => list.visible || (revealed?.id === list.id && revealed.visible === list.visible)
+		)
+	);
+	const current = $derived(focus && (lists.get(focus.id) ?? focus));
+	const selected = $derived(store.get(openTaskId()));
 
 	async function close() {
 		const id = selected?.id;
@@ -71,31 +68,42 @@
 		void goto(resolve('/'), { invalidate: [TASKS_DEPENDENCY] });
 	}
 
-	$effect(() => {
+	// Scroll to the focused List when the page opens on its link, when the User follows a link to
+	// another List, and when they pick the same List again (on a phone, to get back to it in the
+	// stack). Opening or closing a Task only changes the query, which is no reason to scroll.
+	afterNavigate(({ from, to }) => {
 		const id = focusId;
-		if (!scrollToFocus) return;
+		if (
+			!id ||
+			(from && from.url.pathname === to?.url.pathname && from.url.search !== to.url.search)
+		)
+			return;
+		// Picking a List again after hiding it shows it again.
+		revealed = reveal(id);
 		void tick().then(() => {
 			const el = document.querySelector<HTMLElement>(`[data-column="${id}"]`);
-			if (!el || el.offsetParent === null) return;
+			if (!el) return;
 			el.focus({ preventScroll: true });
-			el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+			el.scrollIntoView({ inline: 'nearest', block: 'start' });
 		});
 	});
 </script>
 
 <svelte:head>
-	<title>{current.name} · Tasks</title>
+	<title>{current ? `${current.name} · Tasks` : 'Tasks'}</title>
 </svelte:head>
+
+{#if columns.length === 0}
+	<p class="all-hidden">{m.list_all_hidden()}</p>
+{/if}
 
 <div class="columns" class:with-panel={selected}>
 	{#each columns as list (list.id)}
 		<!-- Focusable only by script (the deep link); the column inside is the real landmark. -->
 		<div
 			class="slot"
-			class:focused={list.id === focus.id}
-			class:narrow-only={!wideColumn(list)}
 			data-column={list.id}
-			data-focused={list.id === focus.id ? '' : undefined}
+			data-focused={list.id === focusId ? '' : undefined}
 			tabindex="-1"
 		>
 			<ListColumn {list} {onDeleted} />
@@ -230,12 +238,14 @@
 		flex: none;
 		width: 24rem;
 		outline: none;
+		/* Scrolled to just below the sticky header, where <main>'s padding puts the first column. */
+		scroll-margin-top: calc(var(--header-height) + env(safe-area-inset-top) + var(--space-5));
 	}
 
-	@media (min-width: 769px) {
-		.slot.narrow-only {
-			display: none;
-		}
+	.all-hidden {
+		max-width: 28rem;
+		margin: 0;
+		color: var(--muted);
 	}
 
 	/* Leave room to scroll the last column clear of the side panel. */
@@ -247,16 +257,17 @@
 		}
 	}
 
-	/* One List at a time on narrow screens. */
+	/* Stacked on narrow screens: every List in full, one after another. */
 	@media (max-width: 768px) {
-		.slot {
-			display: none;
-			width: 100%;
-			max-width: 42rem;
+		.columns {
+			flex-direction: column;
+			align-items: stretch;
+			gap: var(--space-6);
 		}
 
-		.slot.focused {
-			display: block;
+		.slot {
+			width: 100%;
+			max-width: 42rem;
 		}
 	}
 </style>

@@ -241,32 +241,3 @@ test('a Calendar Link created elsewhere shows up in the settings', async ({ brow
 
 	await expect(one.getByText('From elsewhere')).toBeVisible();
 });
-
-test('each device remembers its own last-viewed List', async ({ browser }) => {
-	const { one, two } = await twoDevices(browser);
-	await createList(one, 'On device one');
-	await createList(two, 'On device two');
-	await comeBack(one);
-	await expect(sidebar(one).getByRole('link', { name: 'On device two' })).toBeVisible();
-
-	await one.goto('/');
-	await two.goto('/');
-
-	await expectFocused(one, 'On device one');
-	await expectFocused(two, 'On device two');
-});
-
-test('a device resting on the start page stays on its List through a reload', async ({
-	browser
-}) => {
-	const { one, two } = await twoDevices(browser);
-	await createList(one, 'On device one');
-	await one.goto('/');
-	await expectFocused(one, 'On device one');
-
-	await createList(two, 'On device two');
-	await comeBack(one);
-	await expect(sidebar(one).getByRole('link', { name: 'On device two' })).toBeVisible();
-
-	await expectFocused(one, 'On device one');
-});

@@ -235,7 +235,10 @@ export class TaskDrag {
 		};
 	}
 
-	/** The List column under (or, between columns, nearest to) the pointer. */
+	/**
+	 * The List column under (or, between columns, nearest to) the pointer: nearest sideways, and
+	 * among columns at the same distance (stacked on narrow screens) nearest up or down.
+	 */
 	#columnAt(x: number, y: number): (HTMLElement & { dataset: { column: string } }) | null {
 		const scroller = this.#scroller();
 		if (scroller) {
@@ -245,14 +248,19 @@ export class TaskDrag {
 		const columns = [...document.querySelectorAll<HTMLElement>('[data-column]')].filter(
 			(el) => el.getClientRects().length > 0
 		);
+		const gap = (at: number, from: number, to: number) =>
+			at < from ? from - at : at > to ? at - to : 0;
 		let best: HTMLElement | null = null;
-		let bestDistance = Infinity;
+		let bestDx = Infinity;
+		let bestDy = Infinity;
 		for (const el of columns) {
 			const rect = el.getBoundingClientRect();
-			const distance = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0;
-			if (distance < bestDistance) {
+			const dx = gap(x, rect.left, rect.right);
+			const dy = gap(y, rect.top, rect.bottom);
+			if (dx < bestDx || (dx === bestDx && dy < bestDy)) {
 				best = el;
-				bestDistance = distance;
+				bestDx = dx;
+				bestDy = dy;
 			}
 		}
 		return best as (HTMLElement & { dataset: { column: string } }) | null;

@@ -1,7 +1,7 @@
 /**
- * What the main page needs for the multi-List columns layout: the Tasks of every visible List plus
- * the focused List (the one in the URL, or the last-viewed one), which is the only one shown on
- * narrow screens and may be hidden on wide ones.
+ * What the main page needs for the List columns: the Tasks of every visible List, plus those of the
+ * focused List when the page is a link to one (`/lists/[id]`), which shows even if it is a Hidden
+ * List. `/` has no focused List.
  */
 import { serializeList, type SerializedList } from '#lib/domain/lists.js';
 import { serializeTask, type SerializedTask } from '#lib/domain/tasks.js';
@@ -10,14 +10,14 @@ import type { UserScope } from './scope.js';
 import { getTasksOfLists } from './tasks.js';
 
 export interface ColumnsData {
-	/** The focused List; `null` when the User has no Lists. */
+	/** The focused List; `null` on `/`. */
 	list: SerializedList | null;
 	tasks: SerializedTask[];
 }
 
-export function loadColumns(scope: UserScope, focusId: string | undefined): ColumnsData {
+export function loadColumns(scope: UserScope, focusId?: string): ColumnsData {
 	const all = getLists(scope);
-	const focus = all.find((list) => list.id === focusId) ?? all[0];
+	const focus = focusId === undefined ? undefined : all.find((list) => list.id === focusId);
 	const ids = all.filter((list) => list.visible || list.id === focus?.id).map((list) => list.id);
 	return {
 		list: focus ? serializeList(focus) : null,

@@ -22,11 +22,11 @@
 </script>
 
 <svelte:head>
-	{#if !data.list}<title>Tasks</title>{/if}
+	{#if lists.all.length === 0}<title>Tasks</title>{/if}
 </svelte:head>
 
-{#if data.list}
-	<ListPage focus={data.list} tasks={data.tasks} />
+{#if lists.all.length > 0}
+	<ListPage focus={null} tasks={data.tasks} />
 {:else}
 	<section class="no-lists">
 		<h1>{m.list_none_title()}</h1>
