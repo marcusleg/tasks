@@ -17,12 +17,10 @@ export async function saved(page: Page, action: () => Promise<unknown>): Promise
 
 export const sidebar = (page: Page): Locator => page.getByRole('navigation', { name: 'Main' });
 
-/** On a phone: picks the List with this name in the menu. */
+/** On a phone: picks the List with this name in the menu, which jumps to it (`/#<listId>`). */
 export async function switchToList(page: Page, name: string): Promise<void> {
 	await page.getByRole('button', { name: 'Menu', exact: true }).click();
 	await sidebar(page).getByRole('link', { name, exact: true }).click();
-	// Visible Lists are on the page already; wait until this one is the one it links to.
-	await expectFocused(page, name);
 }
 
 /** The column of the List with this name. */
@@ -33,31 +31,21 @@ export const detailPanel = (page: Page): Locator =>
 	page.getByRole('complementary', { name: 'Task details' });
 
 export async function createList(page: Page, name: string): Promise<void> {
+	const before = page.url();
 	await sidebar(page).getByRole('button', { name: 'New list' }).click();
 	await saved(page, async () => {
 		await sidebar(page).getByRole('textbox', { name: 'New list name' }).fill(name);
 		await page.keyboard.press('Enter');
 	});
-	// The page navigates to the new List once it is saved. Until the List is the focused one,
-	// "Add a task" still belongs to the previous List.
-	await expectFocused(page, name);
+	// Once saved, the page jumps to the new List; until then, "Add a task" isn't its.
+	await page.waitForURL((url) => url.href !== before);
 }
 
-/**
- * The List the page is about: the one a `/lists/[id]` page links to, or the first column on `/`
- * (which links to none).
- */
-export const currentColumn = (page: Page): Locator =>
-	new URL(page.url()).pathname.startsWith('/lists/')
-		? page.locator('[data-column][data-focused]')
-		: page.locator('[data-column]').first();
-
-/** Waits until the List with this name is the one the page is about (the focused column). */
-export async function expectFocused(page: Page, name: string): Promise<void> {
-	await expect(
-		page.locator('[data-column][data-focused]').getByRole('heading', { name, level: 2 })
-	).toBeVisible();
-}
+/** The List the URL jumps to (`/#<listId>`), or the first one. */
+export const currentColumn = (page: Page): Locator => {
+	const id = new URL(page.url()).hash.slice(1);
+	return page.locator(id ? `[data-column="${id}"]` : '[data-column]').first();
+};
 
 export async function addTask(page: Page, title: string): Promise<void> {
 	await waitForHydration(page);

@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { m } from '#lib/paraglide/messages.js';
 	import { hydration } from '#lib/client/hydration.svelte.js';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import ListPage from '#lib/components/tasks/ListPage.svelte';
 	import { MAX_LIST_NAME_LENGTH } from '#lib/domain/lists.js';
@@ -13,20 +11,19 @@
 	const lists = getListStore();
 	let name = $state('');
 
-	async function create(event: SubmitEvent) {
+	// The new List replaces this form as the only column.
+	function create(event: SubmitEvent) {
 		event.preventDefault();
-		if (!name.trim()) return;
-		const id = await lists.create(name);
-		if (id) await goto(resolve('/lists/[id]', { id }));
+		if (name.trim()) void lists.create(name);
 	}
 </script>
 
 <svelte:head>
-	{#if lists.all.length === 0}<title>Tasks</title>{/if}
+	<title>Tasks</title>
 </svelte:head>
 
 {#if lists.all.length > 0}
-	<ListPage focus={null} tasks={data.tasks} />
+	<ListPage tasks={data.tasks} />
 {:else}
 	<section class="no-lists">
 		<h1>{m.list_none_title()}</h1>

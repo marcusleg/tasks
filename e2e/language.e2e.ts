@@ -58,7 +58,7 @@ test.describe('a German browser', () => {
 			page.request.post(path, { data, headers: { origin: appOrigin } });
 		expect((await post('/api/lists', { id: listId, name: 'Besorgungen' })).status()).toBe(201);
 		expect((await post('/api/tasks', { listId, title: 'Briefmarken' })).status()).toBe(201);
-		await page.goto(`/lists/${listId}`);
+		await page.goto('/');
 		const stamps = page.getByRole('checkbox', { name: 'Briefmarken', exact: true });
 		await expect(stamps).toBeVisible();
 
@@ -78,7 +78,7 @@ test.describe('a German browser', () => {
 
 	test('gets the error and not-allowed pages in German', async ({ page }) => {
 		await loginAs(page);
-		const missing = await page.goto('/lists/does-not-exist');
+		const missing = await page.goto('/does-not-exist');
 		expect(missing!.status()).toBe(404);
 		await expect(page.getByRole('heading', { name: 'Nicht gefunden' })).toBeVisible();
 		await expect(page).toHaveTitle('Nicht gefunden · Tasks');

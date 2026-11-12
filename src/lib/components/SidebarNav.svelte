@@ -7,8 +7,6 @@
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { dropIndex } from '#lib/client/reorder.js';
 	import { MAX_LIST_NAME_LENGTH, moveToIndex } from '#lib/domain/lists.js';
-	import { invalidate } from '$app/navigation';
-	import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
 	import { m } from '#lib/paraglide/messages.js';
 
 	const lists = getListStore();
@@ -18,20 +16,11 @@
 		{ href: '/settings', label: m.shell_sidebar_settings }
 	] as const;
 
-	/** The List the page links to (`/lists/[id]`); none on `/`. */
-	const shownListId = $derived(page.params.id);
-
 	let announcement = $state('');
 	let listEl = $state<HTMLUListElement>();
 	/** The entry being dragged: its index, how far the pointer moved, and where it would land. */
 	let drag = $state<{ id: string; from: number; dy: number; to: number } | null>(null);
 	let dragStartY = 0;
-
-	async function toggle(id: string, visible: boolean) {
-		const ok = await lists.update(id, { visible });
-		// Showing a List needs its Tasks, which the page only loaded for the visible Lists.
-		if (ok && visible) await invalidate(TASKS_DEPENDENCY);
-	}
 
 	/** Moves the List at `from` to index `to`; keeps focus on `focusEl` (re-inserted by the move). */
 	async function moveTo(from: number, to: number, focusEl?: HTMLElement) {
@@ -111,7 +100,9 @@
 		const pending = lists.create(name);
 		stopCreating();
 		const id = await pending;
-		if (id) await goto(resolve('/lists/[id]', { id }));
+		// Jump to its column, the last one. resolve() doesn't take a hash.
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		if (id) await goto(`${resolve('/')}#${id}`);
 	}
 
 	function onkeydown(event: KeyboardEvent) {
@@ -170,7 +161,7 @@
 							aria-label={m.shell_sidebar_show_list({ name: list.name })}
 							checked={list.visible}
 							disabled={!hydration.done}
-							onchange={(event) => toggle(list.id, event.currentTarget.checked)}
+							onchange={(event) => lists.update(list.id, { visible: event.currentTarget.checked })}
 						/>
 						<svg
 							viewBox="0 0 24 24"
@@ -187,12 +178,12 @@
 							<path class="slash" d="M3 3l18 18" />
 						</svg>
 					</label>
-					<a
-						href={resolve('/lists/[id]', { id: list.id })}
-						aria-current={list.id === shownListId ? 'page' : undefined}
-					>
-						{list.name}
-					</a>
+					<!-- A jump to the List's column; a Hidden List has none to jump to. -->
+					{#if list.visible}
+						<a href="{resolve('/')}#{list.id}">{list.name}</a>
+					{:else}
+						<span class="hidden-list">{list.name}</span>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -314,7 +305,8 @@
 		bottom: -3px;
 	}
 
-	.lists li a {
+	.lists li a,
+	.hidden-list {
 		flex: 1;
 		min-width: 0;
 	}
@@ -371,13 +363,18 @@
 		display: none;
 	}
 
-	a {
+	a,
+	.hidden-list {
 		display: block;
 		padding: var(--space-2) var(--space-3);
 		border-radius: var(--radius-md);
 		color: var(--fg);
 		text-decoration: none;
 		overflow-wrap: anywhere;
+	}
+
+	.hidden-list {
+		color: var(--muted);
 	}
 
 	a:hover {

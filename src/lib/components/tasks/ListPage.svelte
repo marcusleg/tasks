@@ -1,27 +1,22 @@
 <script lang="ts">
 	import { m } from '#lib/paraglide/messages.js';
 	import { onDestroy, tick } from 'svelte';
-	import { afterNavigate, goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { setTaskDrag, TaskDrag } from '#lib/client/task-drag.svelte.js';
 	import { closeTask, openTaskId } from '#lib/client/task-panel.js';
 	import { setTaskStore, TaskStore } from '#lib/client/tasks.svelte.js';
 	import { httpTaskPort } from '#lib/client/task-port.http.js';
 	import { getToasts } from '#lib/client/toasts.svelte.js';
-	import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
-	import type { SerializedList } from '#lib/domain/lists.js';
 	import type { SerializedTask } from '#lib/domain/tasks.js';
 	import ListColumn from './ListColumn.svelte';
 	import TaskDetail from './TaskDetail.svelte';
 
 	/**
 	 * The main page: the visible Lists as columns, side by side on wide screens and stacked on narrow
-	 * ones, and, when `?task=` is set, that Task's detail panel. With a `focus` (the `/lists/[id]`
-	 * link) that List's column shows even if it is a Hidden List, and is scrolled into view and
-	 * focused; `/` has none.
+	 * ones, and, when `?task=` is set, that Task's detail panel. Each column's id is its List's, so
+	 * `/#<listId>` jumps to it.
 	 */
-	let { focus, tasks }: { focus: SerializedList | null; tasks: SerializedTask[] } = $props();
+	let { tasks }: { tasks: SerializedTask[] } = $props();
 
 	const lists = getListStore();
 	const store = setTaskStore(
@@ -36,14 +31,8 @@
 	// The columns scroll sideways inside <main> (AppShell).
 	const drag = setTaskDrag(new TaskDrag(store, lists, () => document.getElementById('main')));
 
-	const focusId = $derived(focus?.id);
-
 	// The Lists as edited in this browser (renamed, hidden, reordered), falling back to the page data.
-	// A link to a Hidden List shows its column until the User shows it, which reloads the page data.
-	const columns = $derived(
-		lists.all.filter((list) => list.visible || (list.id === focusId && focus?.visible === false))
-	);
-	const current = $derived(focus && (lists.get(focus.id) ?? focus));
+	const columns = $derived(lists.all.filter((list) => list.visible));
 	const selected = $derived(store.get(openTaskId()));
 
 	async function close() {
@@ -53,28 +42,7 @@
 		// Back to the row the panel was opened from.
 		document.querySelector<HTMLElement>(`[data-task-id="${id}"] .open`)?.focus();
 	}
-
-	function onDeleted() {
-		void goto(resolve('/'), { invalidate: [TASKS_DEPENDENCY] });
-	}
-
-	// After navigating, not as an effect: SvelteKit scrolls a new page to the top once it has
-	// rendered. Opening or closing a Task only changes the query, which is no reason to scroll.
-	afterNavigate(({ from, to }) => {
-		const id = focusId;
-		if (!id || from?.url.pathname === to?.url.pathname) return;
-		void tick().then(() => {
-			const el = document.querySelector<HTMLElement>(`[data-column="${id}"]`);
-			if (!el) return;
-			el.focus({ preventScroll: true });
-			el.scrollIntoView({ inline: 'nearest', block: 'start' });
-		});
-	});
 </script>
-
-<svelte:head>
-	<title>{current ? `${current.name} · Tasks` : 'Tasks'}</title>
-</svelte:head>
 
 {#if columns.length === 0}
 	<p class="all-hidden">{m.list_all_hidden()}</p>
@@ -82,14 +50,8 @@
 
 <div class="columns" class:with-panel={selected}>
 	{#each columns as list (list.id)}
-		<!-- Focusable only by script (the deep link); the column inside is the real landmark. -->
-		<div
-			class="slot"
-			data-column={list.id}
-			data-focused={list.id === focusId ? '' : undefined}
-			tabindex="-1"
-		>
-			<ListColumn {list} {onDeleted} />
+		<div class="slot" id={list.id} data-column={list.id}>
+			<ListColumn {list} />
 		</div>
 	{/each}
 </div>
@@ -220,7 +182,6 @@
 	.slot {
 		flex: none;
 		width: 24rem;
-		outline: none;
 		/* Scrolled to just below the sticky header, where <main>'s padding puts the first column. */
 		scroll-margin-top: calc(var(--header-height) + env(safe-area-inset-top) + var(--space-5));
 	}

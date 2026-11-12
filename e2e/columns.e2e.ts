@@ -46,6 +46,8 @@ test('desktop shows the visible Lists as columns; hiding persists', async ({ pag
 	await hide(page, 'Groceries');
 	await expect(column(page, 'Groceries')).toBeHidden();
 	await expect(column(page, 'My Tasks')).toBeVisible();
+	// There's no column to jump to.
+	await expect(sidebar(page).getByRole('link', { name: 'Groceries' })).toHaveCount(0);
 
 	await page.reload();
 	await expect(column(page, 'Groceries')).toBeHidden();
@@ -57,19 +59,6 @@ test('desktop shows the visible Lists as columns; hiding persists', async ({ pag
 
 	// The page itself never scrolls sideways.
 	await noSidewaysScroll(page);
-});
-
-test('a link to a hidden List shows its column', async ({ page }) => {
-	await page.setViewportSize({ width: 1280, height: 800 });
-	await loginAs(page);
-	await createList(page, 'Groceries');
-	await hide(page, 'Groceries');
-	await page.goto('/');
-	await expect(column(page, 'Groceries')).toBeHidden();
-
-	await sidebar(page).getByRole('link', { name: 'Groceries' }).click();
-	await expect(column(page, 'Groceries')).toBeVisible();
-	await expect(page.locator('[data-column]:focus')).toHaveCount(1);
 });
 
 test('reordering Lists with the keyboard changes the column order and persists', async ({
@@ -149,30 +138,22 @@ test('on a phone the visible Lists are stacked in List order', async ({ page }) 
 	await noSidewaysScroll(page);
 });
 
-test('on a phone the menu scrolls to the List picked, Hidden or not', async ({ page }) => {
+test('on a phone the menu scrolls to the List picked', async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await loginAs(page);
 	for (let i = 1; i <= 12; i++) await addTask(page, `Task ${i}`);
 	await createList(page, 'Groceries');
-	await createList(page, 'Work');
-	await hide(page, 'Work');
 	await page.setViewportSize(PHONE);
 	await page.goto('/');
 	await expect(column(page, 'Groceries')).not.toBeInViewport();
 
 	await switchToList(page, 'Groceries');
-	await expect(page).toHaveTitle('Groceries · Tasks');
+	await expect(page).toHaveTitle('Tasks');
 	await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveAttribute(
 		'aria-expanded',
 		'false'
 	);
 	await expectScrolledTo(page, 'Groceries');
-
-	// A Hidden List shows in its place in the stack.
-	await switchToList(page, 'Work');
-	await expectScrolledTo(page, 'Work');
-	const groceries = (await column(page, 'Groceries').boundingBox())!;
-	expect((await column(page, 'Work').boundingBox())!.y).toBeGreaterThan(groceries.y);
 	await noSidewaysScroll(page);
 });
 

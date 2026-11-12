@@ -99,7 +99,7 @@ describe('toCalendarTasks', () => {
 			id: dated.id,
 			title: 'Dated',
 			listName: 'L',
-			url: `${ORIGIN}/lists/${list.id}?task=${dated.id}`
+			url: `${ORIGIN}/?task=${dated.id}#${list.id}`
 		});
 		expect(result[0].recurrence).toBeUndefined();
 	});

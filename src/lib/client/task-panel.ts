@@ -1,6 +1,6 @@
 /**
  * The open Task detail panel lives in the URL as `?task=<id>`, so a Task can be linked to (e.g.
- * from a Calendar Link event: `/lists/<listId>?task=<taskId>`) and Back closes the panel.
+ * from a Calendar Link event: `/?task=<taskId>#<listId>`) and Back closes the panel.
  */
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
