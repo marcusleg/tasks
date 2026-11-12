@@ -19,7 +19,7 @@ A named, ordered collection of Tasks owned by one User.
 _Avoid_: To-Do list, project, folder, board
 
 **Hidden List**:
-A List the User has chosen not to show on the main page, on any device. Its Tasks are untouched and still count in the Priority View and Calendar Links. To see it again, the User shows it; there is no way to open it while it stays hidden.
+A List the User has chosen not to show on the main page, on any device. Its Tasks are untouched and still count in the Priority View and Calendar Links. To see it again, the User shows it; a link can't open it while it stays hidden.
 _Avoid_: Archived, collapsed, inactive
 
 ### Tasks

@@ -155,6 +155,15 @@ test('on a phone the menu scrolls to the List picked', async ({ page }) => {
 	);
 	await expectScrolledTo(page, 'Groceries');
 	await noSidewaysScroll(page);
+
+	// Picking it again with the keyboard brings it back and moves the keyboard into it.
+	await page.evaluate(() => window.scrollTo(0, 0));
+	await page.getByRole('button', { name: 'Menu', exact: true }).click();
+	await sidebar(page).getByRole('link', { name: 'Groceries', exact: true }).press('Enter');
+	await expectScrolledTo(page, 'Groceries');
+	await expect(
+		page.locator('[data-column]:focus').getByRole('heading', { name: 'Groceries' })
+	).toBeVisible();
 });
 
 test('when every List is hidden, the page says so', async ({ page }) => {
