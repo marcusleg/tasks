@@ -7,7 +7,6 @@ import {
 	column,
 	createList,
 	detailPanel,
-	expectFocused,
 	openTitles,
 	saved,
 	sidebar
@@ -38,8 +37,6 @@ async function sharedList(
 	await createList(two, 'Shared');
 	await comeBack(one);
 	await sidebar(one).getByRole('link', { name: 'Shared' }).click();
-	await one.waitForURL(/\/lists\//);
-	await expectFocused(one, 'Shared');
 	return { one, two };
 }
 
@@ -214,7 +211,7 @@ test('a reload waits for changes still being saved', async ({ browser }) => {
 	await expect(openTitles(one, 'Shared')).toHaveText(['Mine', 'Theirs']);
 });
 
-test('a device showing a List deleted elsewhere goes back to the start', async ({ browser }) => {
+test('a List deleted elsewhere disappears on coming back', async ({ browser }) => {
 	const { one, two } = await sharedList(browser);
 
 	await column(two, 'Shared').getByRole('button', { name: 'List options' }).click();
@@ -222,7 +219,7 @@ test('a device showing a List deleted elsewhere goes back to the start', async (
 	await saved(two, () => two.getByRole('dialog').getByRole('button', { name: 'Delete' }).click());
 	await comeBack(one);
 
-	await expect(one).toHaveURL('/');
+	await expect(column(one, 'Shared')).toHaveCount(0);
 	await expect(sidebar(one).getByRole('link', { name: 'Shared' })).toHaveCount(0);
 });
 

@@ -24,13 +24,7 @@
 	 * of open parents are grouped under their parent's Title. Reads and changes Tasks through the page's `TaskStore` and the List through the
 	 * `ListStore`, so several columns can sit side by side (#10).
 	 */
-	type Props = {
-		list: SerializedList;
-		/** Called after the List was deleted, e.g. to navigate away. */
-		onDeleted?: () => void;
-	};
-
-	let { list, onDeleted }: Props = $props();
+	let { list }: { list: SerializedList } = $props();
 
 	const tasks = getTaskStore();
 	const lists = getListStore();
@@ -102,10 +96,6 @@
 			event.stopPropagation();
 			finishRename(false);
 		}
-	}
-
-	async function deleteList() {
-		if (await lists.remove(list.id)) onDeleted?.();
 	}
 
 	const completedCount = $derived(tasks.completedCount(list.id));
@@ -263,7 +253,7 @@
 	title={m.confirm_delete_list_title({ name: list.name })}
 	message={m.confirm_delete_list_message()}
 	confirmLabel={m.confirm_delete_list_confirm()}
-	onConfirm={deleteList}
+	onConfirm={() => lists.remove(list.id)}
 />
 
 <ConfirmDialog

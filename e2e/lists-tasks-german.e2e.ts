@@ -30,9 +30,8 @@ async function createListAndTask(page: Page, title: string): Promise<void> {
 		await page.getByRole('textbox', { name: 'Name der neuen Liste' }).fill(LIST);
 		await page.keyboard.press('Enter');
 	});
-	await expect(
-		page.locator('[data-column][data-focused]').getByRole('heading', { name: LIST })
-	).toBeVisible();
+	// Once saved, the page jumps to the new List.
+	await page.waitForURL(/#/);
 	await waitForHydration(page);
 	await saved(page, async () => {
 		await column(page).getByRole('textbox', { name: 'Aufgabe hinzufügen' }).fill(title);

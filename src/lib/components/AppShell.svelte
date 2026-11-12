@@ -42,10 +42,15 @@
 		}
 	}
 
-	// Close the drawer after navigating, also to the page already open (picking the List shown).
+	// Close the drawer after navigating, e.g. to a new List.
 	afterNavigate(() => {
 		open = false;
 	});
+
+	// Also after following a link in it, which may only jump to a List on this page.
+	function onSidebarClick(event: MouseEvent) {
+		if ((event.target as Element).closest('a')) open = false;
+	}
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -85,12 +90,15 @@
 			<!-- Click-away layer for the drawer; keyboard users close it with Esc. -->
 			<div class="backdrop" role="presentation" onclick={() => close(false)}></div>
 		{/if}
+		<!-- The links in it take the click, from the keyboard too. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 		<aside
 			id="app-sidebar"
 			class="sidebar"
 			class:open
 			bind:this={sidebarEl}
 			aria-label={m.shell_sidebar()}
+			onclick={onSidebarClick}
 		>
 			{@render sidebar()}
 		</aside>

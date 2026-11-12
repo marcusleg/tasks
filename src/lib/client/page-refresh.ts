@@ -2,9 +2,9 @@
  * Keeps an open page from showing stale data after changes made on another device: it reloads its
  * `load` data when the User comes back to it, and now and then while it stays visible (ADR 0003).
  */
-import { goto, invalidate } from '$app/navigation';
+import { invalidate } from '$app/navigation';
 import { resolve } from '$app/paths';
-import { navigating, page } from '$app/state';
+import { navigating } from '$app/state';
 import { mutations } from './api.js';
 
 const RELOAD_EVERY_MS = 60_000;
@@ -58,8 +58,6 @@ export function startPageRefresh(): () => void {
 		await invalidate((url) => url.protocol === 'app:');
 		// What just loaded may predate a change made here in the meantime.
 		if (mutations.started !== started) return schedule(SETTLE_MS);
-		// The List on screen was deleted elsewhere.
-		if (page.status === 404 && page.route.id === '/lists/[id]') await goto(resolve('/'));
 		schedule(RELOAD_EVERY_MS);
 	}
 

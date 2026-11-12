@@ -1,14 +1,6 @@
 import { expect, test } from './fixtures';
 import { loginAs } from './auth';
-import {
-	addTask,
-	column,
-	createList,
-	expectFocused,
-	listOption,
-	saved,
-	sidebar
-} from './lists-tasks';
+import { addTask, column, createList, listOption, saved, sidebar } from './lists-tasks';
 
 test('a new User sees "My Tasks"', async ({ page }) => {
 	await loginAs(page);
@@ -46,7 +38,7 @@ test('create, rename and delete Lists', async ({ page }) => {
 	await loginAs(page);
 
 	await createList(page, 'Groceries');
-	await expect(page).toHaveURL(/\/lists\/[0-9a-f-]{36}$/);
+	await expect(page).toHaveURL(/\/#[0-9a-f-]{36}$/);
 	await createList(page, 'Work');
 	await expect(sidebar(page).getByRole('list').first().getByRole('link')).toHaveText([
 		'My Tasks',
@@ -55,8 +47,6 @@ test('create, rename and delete Lists', async ({ page }) => {
 	]);
 
 	await sidebar(page).getByRole('link', { name: 'Groceries' }).click();
-	// Every List is a column already; wait until Groceries is the one the page is about.
-	await expectFocused(page, 'Groceries');
 	await addTask(page, 'Milk');
 	await listOption(page, 'Groceries', 'Rename list');
 	const nameField = page.getByRole('textbox', { name: 'List name' });
@@ -76,7 +66,6 @@ test('create, rename and delete Lists', async ({ page }) => {
 
 	await page.reload();
 	await expect(page.getByRole('heading', { name: 'Shopping', level: 2 })).toBeVisible();
-	const shoppingUrl = page.url();
 
 	// Deleting asks first; cancelling keeps the List.
 	await listOption(page, 'Shopping', 'Delete list');
@@ -88,13 +77,14 @@ test('create, rename and delete Lists', async ({ page }) => {
 
 	await listOption(page, 'Shopping', 'Delete list');
 	await saved(page, () => dialog.getByRole('button', { name: 'Delete list' }).click());
-	await expect(page).toHaveURL(/\/$/);
 	await expect(sidebar(page).getByRole('link', { name: 'Shopping' })).toBeHidden();
+	await expect(column(page, 'Shopping')).toHaveCount(0);
 	await expect(page.getByRole('heading', { level: 2, name: 'My Tasks' })).toBeVisible();
 
 	// The List and its Tasks are gone.
-	const response = await page.goto(shoppingUrl);
-	expect(response?.status()).toBe(404);
+	await page.reload();
+	await expect(column(page, 'Shopping')).toHaveCount(0);
+	await expect(page.getByText('Milk')).toHaveCount(0);
 });
 
 test('two Users only ever see their own Lists', async ({ browser }) => {
@@ -113,11 +103,11 @@ test('two Users only ever see their own Lists', async ({ browser }) => {
 		'My Tasks',
 		'Bob stuff'
 	]);
-	expect((await bob.goto(aliceListUrl))?.status()).toBe(404);
+	await bob.goto(aliceListUrl);
 	await expect(bob.getByText('Alice task')).toBeHidden();
 
 	// Nor can they change them through the API.
-	const listId = new URL(aliceListUrl).pathname.split('/').at(-1);
+	const listId = new URL(aliceListUrl).hash.slice(1);
 	const rename = await bob.request.patch(`/api/lists/${listId}`, {
 		data: { name: 'Hacked' },
 		headers: { 'content-type': 'application/json' }
@@ -139,7 +129,6 @@ test('the API rejects anonymous requests with 401', async ({ request }) => {
 test('a failed List change toasts and the name rolls back', async ({ page }) => {
 	await loginAs(page);
 	await createList(page, 'Groceries');
-	await expectFocused(page, 'Groceries');
 	await page.route('**/api/lists/*', (route) =>
 		route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"Boom"}' })
 	);

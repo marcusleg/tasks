@@ -56,7 +56,7 @@ export function toCalendarTasks(input: {
 			title: task.title,
 			description: task.description,
 			listName: listNames.get(task.listId) ?? '',
-			url: `${origin}/lists/${task.listId}?task=${task.id}`,
+			url: `${origin}/?task=${task.id}#${task.listId}`,
 			planned: task.planned,
 			due: task.due,
 			undatedSubtasks: subtasks
