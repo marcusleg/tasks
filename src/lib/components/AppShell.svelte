@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import type { Snippet } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
 	import UserMenu from './UserMenu.svelte';
 	import { m } from '#lib/paraglide/messages.js';
 
@@ -42,9 +42,8 @@
 		}
 	}
 
-	// Close the drawer after navigating.
-	$effect(() => {
-		void page.url.pathname;
+	// Close the drawer after navigating, also to the page already open (picking the List shown).
+	afterNavigate(() => {
 		open = false;
 	});
 </script>

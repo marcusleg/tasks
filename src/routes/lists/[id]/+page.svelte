@@ -6,5 +6,5 @@
 </script>
 
 {#if data.list}
-	<ListPage focus={data.list} tasks={data.tasks} scrollToFocus />
+	<ListPage focus={data.list} tasks={data.tasks} />
 {/if}

@@ -76,6 +76,7 @@
 	"feed_list": "List: {name}",
 	"feed_subtask_of": "Subtask of: {title}",
 	"list_all_completed": "All tasks completed",
+	"list_all_hidden": "All your lists are hidden. Show one with the eye next to its name.",
 	"list_completed_heading": "Completed ({count})",
 	"list_completed_tasks": "Completed tasks",
 	"list_create": "Create list",

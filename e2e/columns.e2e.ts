@@ -1,9 +1,9 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { loginAs } from './auth';
-import { column, createList, saved, sidebar, switchToList } from './lists-tasks';
+import { addTask, column, createList, saved, sidebar, switchToList } from './lists-tasks';
 
-const listNames = (page: import('@playwright/test').Page) =>
-	sidebar(page).locator('li[data-list-id] a');
+const listNames = (page: Page) => sidebar(page).locator('li[data-list-id] a');
 
 test('desktop shows the visible Lists as columns; hiding persists', async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
@@ -110,28 +110,100 @@ test('dragging a List in the sidebar reorders it', async ({ page }) => {
 	await expect(listNames(page)).toHaveText(['Groceries', 'My Tasks']);
 });
 
-test('on a phone one List shows at a time and the menu changes it', async ({ page }) => {
+const PHONE = { width: 360, height: 740 };
+
+const noSidewaysScroll = async (page: Page) =>
+	expect(
+		await page.evaluate(
+			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+		)
+	).toBeLessThanOrEqual(0);
+
+/** Hides a List with its eye in the sidebar (wide screens). */
+const hide = (page: Page, name: string) =>
+	saved(page, () =>
+		sidebar(page)
+			.getByRole('checkbox', { name: `Show ${name}` })
+			.uncheck()
+	);
+
+/** Asserts the List's heading is in view and clear of the sticky header. */
+async function expectScrolledTo(page: Page, name: string): Promise<void> {
+	const heading = column(page, name).getByRole('heading', { name, level: 2 });
+	await expect(heading).toBeInViewport();
+	const header = (await page.locator('header').first().boundingBox())!;
+	expect((await heading.boundingBox())!.y).toBeGreaterThanOrEqual(header.y + header.height);
+}
+
+test('on a phone the visible Lists are stacked in List order', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 800 });
 	await loginAs(page);
 	await createList(page, 'Groceries');
-	await page.setViewportSize({ width: 360, height: 740 });
+	await createList(page, 'Work');
+	await hide(page, 'Work');
+	await page.setViewportSize(PHONE);
 	await page.goto('/');
 
-	// `/` shows the last-viewed List.
+	await expect(page).toHaveTitle('Tasks');
+	await expect(column(page, 'My Tasks')).toBeVisible();
 	await expect(column(page, 'Groceries')).toBeVisible();
-	await expect(column(page, 'My Tasks')).toBeHidden();
+	await expect(column(page, 'Work')).toHaveCount(0);
+	const a = (await column(page, 'My Tasks').boundingBox())!;
+	const b = (await column(page, 'Groceries').boundingBox())!;
+	expect(b.y).toBeGreaterThan(a.y + a.height - 1);
+	expect(Math.abs(a.x - b.x)).toBeLessThan(2);
+	expect(await page.evaluate(() => window.scrollY)).toBe(0);
+	await noSidewaysScroll(page);
+});
 
-	await switchToList(page, 'My Tasks');
-	await expect(page).toHaveURL(/\/lists\//);
-	await expect(column(page, 'My Tasks')).toBeVisible();
-	await expect(column(page, 'Groceries')).toBeHidden();
-
-	// ...and is remembered.
+test('on a phone the menu scrolls to the List picked, Hidden or not', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await loginAs(page);
+	for (let i = 1; i <= 12; i++) await addTask(page, `Task ${i}`);
+	await createList(page, 'Groceries');
+	await createList(page, 'Work');
+	await hide(page, 'Work');
+	await page.setViewportSize(PHONE);
 	await page.goto('/');
-	await expect(column(page, 'My Tasks')).toBeVisible();
-	await expect(column(page, 'Groceries')).toBeHidden();
+	await expect(column(page, 'Groceries')).not.toBeInViewport();
 
-	const overflow = await page.evaluate(
-		() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+	await switchToList(page, 'Groceries');
+	await expect(page).toHaveTitle('Groceries · Tasks');
+	await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveAttribute(
+		'aria-expanded',
+		'false'
 	);
-	expect(overflow).toBeLessThanOrEqual(0);
+	await expectScrolledTo(page, 'Groceries');
+
+	// Picking it again brings it back into view.
+	await page.evaluate(() => window.scrollTo(0, 0));
+	await expect(column(page, 'Groceries')).not.toBeInViewport();
+	await switchToList(page, 'Groceries');
+	await expectScrolledTo(page, 'Groceries');
+
+	// A Hidden List shows in its place in the stack.
+	await switchToList(page, 'Work');
+	await expectScrolledTo(page, 'Work');
+	const groceries = (await column(page, 'Groceries').boundingBox())!;
+	expect((await column(page, 'Work').boundingBox())!.y).toBeGreaterThan(groceries.y);
+	await noSidewaysScroll(page);
+});
+
+test('when every List is hidden, the page says so', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await loginAs(page);
+	await hide(page, 'My Tasks');
+	await page.goto('/');
+
+	const message = page.getByText('All your lists are hidden.');
+	await expect(message).toBeVisible();
+	await expect(column(page, 'My Tasks')).toHaveCount(0);
+
+	await page.setViewportSize(PHONE);
+	await expect(message).toBeVisible();
+
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await saved(page, () => sidebar(page).getByRole('checkbox', { name: 'Show My Tasks' }).check());
+	await expect(column(page, 'My Tasks')).toBeVisible();
+	await expect(message).toBeHidden();
 });

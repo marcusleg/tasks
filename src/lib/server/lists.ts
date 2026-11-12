@@ -155,11 +155,3 @@ export function ensureUserSetUp(scope: UserScope, language: Language): boolean {
 		return true;
 	});
 }
-
-/**
- * The List to show at `/`: the one last viewed on this device if it still exists and is the User's,
- * else the first.
- */
-export function getStartList(scope: UserScope, lastViewedId: string | undefined): List | undefined {
-	return (lastViewedId && getList(scope, lastViewedId)) || getLists(scope)[0];
-}

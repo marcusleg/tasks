@@ -1,15 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidInputError } from '#lib/domain/validation.js';
 import { lists, tasks } from './db/schema';
-import {
-	createList,
-	deleteList,
-	ensureUserSetUp,
-	getList,
-	getLists,
-	getStartList,
-	updateList
-} from './lists';
+import { createList, deleteList, ensureUserSetUp, getList, getLists, updateList } from './lists';
 import type { UserScope } from './scope';
 import { createTask } from './tasks';
 import { createTestDb, insertUser } from './testing/index';
@@ -172,41 +164,6 @@ describe('cross-User isolation', () => {
 
 		expect(getLists(bob).map((l) => l.name)).toEqual(['Bob stuff']);
 		expect(getList(bob, list.id)).toBeUndefined();
-	});
-});
-
-describe('getStartList', () => {
-	it('is the first List until another one was viewed', () => {
-		const { alice } = setUp();
-		const first = createList(alice, { name: 'First' });
-		const second = createList(alice, { name: 'Second' });
-
-		expect(getStartList(alice, undefined)?.id).toBe(first.id);
-		expect(getStartList(alice, second.id)?.id).toBe(second.id);
-	});
-
-	it('falls back to the first List when the last-viewed one is deleted', () => {
-		const { alice } = setUp();
-		const first = createList(alice, { name: 'First' });
-		const second = createList(alice, { name: 'Second' });
-
-		deleteList(alice, second.id);
-
-		expect(getStartList(alice, second.id)?.id).toBe(first.id);
-	});
-
-	it("ignores another User's List as last viewed", () => {
-		const { alice, bob } = setUp();
-		const mine = createList(bob, { name: 'Mine' });
-		const theirs = createList(alice, { name: 'Theirs' });
-
-		expect(getStartList(bob, theirs.id)?.id).toBe(mine.id);
-	});
-
-	it('is undefined without Lists', () => {
-		const { alice } = setUp();
-
-		expect(getStartList(alice, undefined)).toBeUndefined();
 	});
 });
 

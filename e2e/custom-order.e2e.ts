@@ -231,6 +231,35 @@ test('"Move to List" in the detail panel works on a phone', async ({ page }) => 
 	await expect(subtaskTitles(page, 'Work', 'Party')).toHaveText(['Cake']);
 });
 
+test('on a phone, drag a Task down into the next List, scrolling the page', async ({ page }) => {
+	await addTasks(page, 'Party', ...Array.from({ length: 20 }, (_, i) => `Chore ${i + 1}`));
+	await createList(page, 'Work');
+	await page.setViewportSize({ width: 360, height: 740 });
+	await page.goto('/');
+	const empty = column(page, 'Work').getByText('No tasks yet');
+	await expect(empty).not.toBeInViewport();
+
+	const from = handle(page, 'Party');
+	await from.hover();
+	const box = (await from.boundingBox())!;
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	await page.mouse.down();
+	// Held near the bottom edge, the page scrolls until Work comes up.
+	await page.mouse.move(box.x + 40, 735, { steps: 12 });
+	await expect(empty).toBeInViewport({ ratio: 1 });
+	await page.mouse.move(box.x + 40, 400, { steps: 4 });
+	const target = (await empty.boundingBox())!;
+	await page.mouse.move(target.x + 20, target.y + target.height / 2, { steps: 8 });
+	await saved(page, () => page.mouse.up());
+
+	await expect(openTitles(page, 'Work')).toHaveText(['Party']);
+	await page.reload();
+	await expect(openTitles(page, 'Work')).toHaveText(['Party']);
+	await expect(column(page, LIST).getByRole('button', { name: 'Party', exact: true })).toHaveCount(
+		0
+	);
+});
+
 test('the move endpoint validates its input', async ({ page }) => {
 	await addTasks(page, 'Party');
 	const created = page.waitForResponse(

@@ -13,10 +13,6 @@ import {
 test('a new User sees "My Tasks"', async ({ page }) => {
 	await loginAs(page);
 
-	await expect(sidebar(page).getByRole('link', { name: 'My Tasks' })).toHaveAttribute(
-		'aria-current',
-		'page'
-	);
 	await expect(page.getByRole('heading', { name: 'My Tasks', level: 2 })).toBeVisible();
 	await expect(column(page, 'My Tasks').getByText('No tasks yet')).toBeVisible();
 
@@ -33,10 +29,6 @@ test.describe('a German browser', () => {
 		// The sidebar's accessible name is in German too (`sidebar()` expects English).
 		const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
 
-		await expect(nav.getByRole('link', { name: 'Meine Aufgaben' })).toHaveAttribute(
-			'aria-current',
-			'page'
-		);
 		await expect(page.getByRole('heading', { name: 'Meine Aufgaben', level: 2 })).toBeVisible();
 		await expect(column(page, 'Meine Aufgaben')).toBeVisible();
 
@@ -103,19 +95,6 @@ test('create, rename and delete Lists', async ({ page }) => {
 	// The List and its Tasks are gone.
 	const response = await page.goto(shoppingUrl);
 	expect(response?.status()).toBe(404);
-});
-
-test('the last-viewed List is shown at /', async ({ page }) => {
-	await loginAs(page);
-	await createList(page, 'Work');
-
-	await page.goto('/');
-
-	await expect(page.getByRole('heading', { name: 'Work', level: 2 })).toBeVisible();
-	await expect(sidebar(page).getByRole('link', { name: 'Work' })).toHaveAttribute(
-		'aria-current',
-		'page'
-	);
 });
 
 test('two Users only ever see their own Lists', async ({ browser }) => {

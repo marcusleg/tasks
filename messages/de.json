@@ -76,6 +76,7 @@
 	"feed_list": "Liste: {name}",
 	"feed_subtask_of": "Unteraufgabe von: {title}",
 	"list_all_completed": "Alle Aufgaben erledigt",
+	"list_all_hidden": "Alle deine Listen sind ausgeblendet. Mit dem Auge neben dem Namen einer Liste blendest du sie wieder ein.",
 	"list_completed_heading": "Erledigt ({count})",
 	"list_completed_tasks": "Erledigte Aufgaben",
 	"list_create": "Liste erstellen",

@@ -2,7 +2,7 @@ import { type Locator, type Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { loginAs } from './auth';
 import { waitForHydration } from './hydration';
-import { saved } from './lists-tasks';
+import { currentColumn, saved } from './lists-tasks';
 
 // Dates and Recurrence in German (CONTEXT.md → Language).
 test.use({ locale: 'de-DE', timezoneId: 'Europe/Berlin' });
@@ -12,8 +12,8 @@ test.beforeEach(async ({ page }) => {
 	await loginAs(page);
 });
 
-// The focused List: named in the Language the User had when it was created.
-const column = (page: Page): Locator => page.locator('[data-column][data-focused]');
+// The List the page is about: named in the Language the User had when it was created.
+const column = currentColumn;
 const panel = (page: Page): Locator => page.getByRole('complementary', { name: 'Aufgabendetails' });
 const row = (page: Page, title: string): Locator =>
 	column(page)
