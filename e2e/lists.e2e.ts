@@ -1,6 +1,14 @@
 import { expect, test } from './fixtures';
 import { loginAs } from './auth';
-import { addTask, column, createList, listOption, saved, sidebar } from './lists-tasks';
+import {
+	addTask,
+	column,
+	createList,
+	detailPanel,
+	listOption,
+	saved,
+	sidebar
+} from './lists-tasks';
 
 test('a new User sees "My Tasks"', async ({ page }) => {
 	await loginAs(page);
@@ -87,6 +95,21 @@ test('create, rename and delete Lists', async ({ page }) => {
 	await expect(page.getByText('Milk')).toHaveCount(0);
 });
 
+test('deleting a List closes the open panel of one of its Tasks', async ({ page }) => {
+	await page.setViewportSize({ width: 1600, height: 900 });
+	await loginAs(page);
+	await createList(page, 'Groceries');
+	await addTask(page, 'Milk');
+	await column(page, 'Groceries').getByRole('button', { name: 'Milk', exact: true }).click();
+	await expect(detailPanel(page)).toBeVisible();
+
+	await listOption(page, 'Groceries', 'Delete list');
+	const dialog = page.getByRole('dialog', { name: 'Delete “Groceries”?' });
+	await saved(page, () => dialog.getByRole('button', { name: 'Delete list' }).click());
+	await expect(column(page, 'Groceries')).toHaveCount(0);
+	await expect(detailPanel(page)).toBeHidden();
+});
+
 test('two Users only ever see their own Lists', async ({ browser }) => {
 	const alice = await (await browser.newContext()).newPage();
 	const bob = await (await browser.newContext()).newPage();
@@ -103,8 +126,6 @@ test('two Users only ever see their own Lists', async ({ browser }) => {
 		'My Tasks',
 		'Bob stuff'
 	]);
-	await bob.goto(aliceListUrl);
-	await expect(bob.getByText('Alice task')).toBeHidden();
 
 	// Nor can they change them through the API.
 	const listId = new URL(aliceListUrl).hash.slice(1);

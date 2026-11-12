@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { getListStore } from '#lib/client/lists.svelte.js';
 	import { hydration } from '#lib/client/hydration.svelte.js';
 	import { dropIndex } from '#lib/client/reorder.js';
 	import { MAX_LIST_NAME_LENGTH, moveToIndex } from '#lib/domain/lists.js';
+	import { TASKS_DEPENDENCY } from '#lib/dependencies.js';
 	import { m } from '#lib/paraglide/messages.js';
 
 	const lists = getListStore();
@@ -21,6 +22,12 @@
 	/** The entry being dragged: its index, how far the pointer moved, and where it would land. */
 	let drag = $state<{ id: string; from: number; dy: number; to: number } | null>(null);
 	let dragStartY = 0;
+
+	async function toggle(id: string, visible: boolean) {
+		const ok = await lists.update(id, { visible });
+		// Showing a List needs its Tasks, which the page only loaded for the visible Lists.
+		if (ok && visible) await invalidate(TASKS_DEPENDENCY);
+	}
 
 	/** Moves the List at `from` to index `to`; keeps focus on `focusEl` (re-inserted by the move). */
 	async function moveTo(from: number, to: number, focusEl?: HTMLElement) {
@@ -161,7 +168,7 @@
 							aria-label={m.shell_sidebar_show_list({ name: list.name })}
 							checked={list.visible}
 							disabled={!hydration.done}
-							onchange={(event) => lists.update(list.id, { visible: event.currentTarget.checked })}
+							onchange={(event) => toggle(list.id, event.currentTarget.checked)}
 						/>
 						<svg
 							viewBox="0 0 24 24"

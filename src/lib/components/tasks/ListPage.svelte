@@ -33,7 +33,11 @@
 
 	// The Lists as edited in this browser (renamed, hidden, reordered), falling back to the page data.
 	const columns = $derived(lists.all.filter((list) => list.visible));
-	const selected = $derived(store.get(openTaskId()));
+	// Not once its List is gone (deleted here or on another device).
+	const selected = $derived.by(() => {
+		const task = store.get(openTaskId());
+		return task && lists.get(task.listId) ? task : undefined;
+	});
 
 	async function close() {
 		const id = selected?.id;
@@ -50,7 +54,8 @@
 
 <div class="columns" class:with-panel={selected}>
 	{#each columns as list (list.id)}
-		<div class="slot" id={list.id} data-column={list.id}>
+		<!-- Focusable by script only, so jumping to the List again also moves the keyboard there. -->
+		<div class="slot" id={list.id} data-column={list.id} tabindex="-1">
 			<ListColumn {list} />
 		</div>
 	{/each}
@@ -182,6 +187,7 @@
 	.slot {
 		flex: none;
 		width: 24rem;
+		outline: none;
 		/* Scrolled to just below the sticky header, where <main>'s padding puts the first column. */
 		scroll-margin-top: calc(var(--header-height) + env(safe-area-inset-top) + var(--space-5));
 	}
