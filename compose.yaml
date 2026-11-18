@@ -1,0 +1,18 @@
+# Start with:  docker compose up -d     (settings live in .env — copy .env.example first)
+services:
+  tasks:
+    build: .
+    image: self-hosted-tasks:latest
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - tasks-data:/data
+
+volumes:
+  tasks-data:

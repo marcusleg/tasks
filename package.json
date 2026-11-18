@@ -1,0 +1,27 @@
+{
+  "name": "self-hosted-tasks",
+  "private": true,
+  "version": "1.0.0",
+  "description": "A self-hostable to-do app in the style of a classic task list, with built-in accounts and OIDC sign-in.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "vite build",
+    "start": "node server/index.js",
+    "reset-password": "node server/cli.js reset-password",
+    "users": "node server/cli.js list-users",
+    "admin": "node server/cli.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.9",
+    "hono": "^4.13.19",
+    "openid-client": "^6.9.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "svelte": "^5.58.0",
+    "vite": "^8.3.8"
+  }
+}

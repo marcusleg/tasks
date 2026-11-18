@@ -1,0 +1,288 @@
+/*
+ * Theme tokens. The palette comes from github.com/marcusleg/tasks (light and dark),
+ * the sizes and spacing from the captured sign-in page. Components use only these.
+ * Dark applies for [data-theme='dark'] or, with no stored choice, when the OS prefers dark.
+ */
+:root {
+  color-scheme: light;
+
+  --bg: #f5f3f0;
+  --surface: #eceae6;
+  --surface-hover: #e3e0db;
+  --fg: #2d2b28;
+  --muted: #6b6555;
+  --border: #d4d0ca;
+  --accent-purple: #8d00ff;
+  --accent-pink: #d9005e;
+  --accent-orange: #a35d00;
+  --accent-cyan: #00798a;
+  --accent-green: #477210;
+  --brand-rule: linear-gradient(90deg, #fd971f, #f92672, #ae81ff);
+  --on-accent: #ffffff;
+  --inverse-accent: #ae81ff;
+  --overlay: rgb(0 0 0 / 0.35);
+  --accent-soft: rgb(141 0 255 / 0.1);
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 4px 12px rgb(0 0 0 / 0.08);
+
+  --font: arial, sans-serif;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 24px;
+
+  --space-3: 3px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-9: 9px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-36: 36px;
+  --space-40: 40px;
+  --space-48: 48px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-pill: 999px;
+
+  --auth-card-width: 450px;
+  --auth-content-width: 368px;
+  --footer-width: 448px;
+  --header-height: 64px;
+  --sidebar-width: 256px;
+  --column-width: 360px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #121310;
+  --surface: #1a1b15;
+  --surface-hover: #20211a;
+  --fg: #f8f8f2;
+  --muted: #8c8875;
+  --border: #3a3a30;
+  --accent-purple: #ae81ff;
+  --accent-pink: #f92672;
+  --accent-orange: #fd971f;
+  --accent-cyan: #66d9ef;
+  --accent-green: #a6e22e;
+  --on-accent: #121310;
+    --inverse-accent: #8d00ff;
+  --overlay: rgb(0 0 0 / 0.5);
+  --accent-soft: rgb(174 129 255 / 0.14);
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.5), 0 4px 16px rgb(0 0 0 / 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    --bg: #121310;
+    --surface: #1a1b15;
+    --surface-hover: #20211a;
+    --fg: #f8f8f2;
+    --muted: #8c8875;
+    --border: #3a3a30;
+    --accent-purple: #ae81ff;
+    --accent-pink: #f92672;
+    --accent-orange: #fd971f;
+    --accent-cyan: #66d9ef;
+    --accent-green: #a6e22e;
+    --on-accent: #121310;
+    --inverse-accent: #8d00ff;
+    --overlay: rgb(0 0 0 / 0.5);
+    --accent-soft: rgb(174 129 255 / 0.14);
+    --shadow: 0 1px 3px rgb(0 0 0 / 0.5), 0 4px 16px rgb(0 0 0 / 0.4);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  line-height: 20px;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+  margin: 0;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--accent-purple);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+svg {
+  display: block;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-pink);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Buttons shared by the sign-in pages and the app. */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  min-width: 64px;
+  padding: 0 var(--space-24);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-purple);
+  color: var(--on-accent);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0.25px;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-purple);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0.25px;
+}
+
+.btn-text:hover {
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+
+.icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+.text-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--text-md);
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--accent-purple);
+  box-shadow: inset 0 0 0 1px var(--accent-purple);
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-stack label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.form-error {
+  color: var(--accent-pink);
+  font-size: var(--text-xs);
+}
