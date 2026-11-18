@@ -4,6 +4,15 @@ A simple, fast task list you run on your own server: lists side by side, tasks w
 due dates, repeating tasks, priorities, stars and subtasks, calendar links for your calendar app, a "Completed" section, drag-and-drop ordering, and light and dark
 themes. Sign in with built-in accounts, an OIDC provider, or both.
 
+## Screenshots
+
+|       | Desktop                                                     | Mobile                                                                              |
+| ----- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Light | ![Desktop, light theme](docs/screenshots/desktop-light.png) | <img src="docs/screenshots/mobile-light.png" alt="Mobile, light theme" width="260"> |
+| Dark  | ![Desktop, dark theme](docs/screenshots/desktop-dark.png)   | <img src="docs/screenshots/mobile-dark.png" alt="Mobile, dark theme" width="260">   |
+
+The theme follows your device's light or dark setting; you can also pick one in the account menu.
+
 ## Run it with Docker (recommended)
 
 ```sh
